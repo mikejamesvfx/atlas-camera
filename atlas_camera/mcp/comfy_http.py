@@ -123,6 +123,22 @@ def spec_items(oi, type_):
             for k, v in (s.get(sec) or {}).items()]
 
 
+def _dyn_option_key(option):
+    """A ``COMFY_DYNAMICCOMBO_V3`` option's key. Options are normally
+    ``{"key": ..., "inputs": {...}}`` dicts, but a bare string option (no
+    sub-widgets) also occurs and must not crash the walk."""
+    return option.get("key") if isinstance(option, dict) else option
+
+
+def _dyn_chosen(cfg, value):
+    """The chosen option's dict (for its sub-``inputs``), or None when the
+    value matches nothing or matches a bare-string option (no sub-widgets)."""
+    for o in cfg.get("options", []) or []:
+        if _dyn_option_key(o) == value:
+            return o if isinstance(o, dict) else None
+    return None
+
+
 def widget_inputs(oi, type_, values):
     """Positional ``widgets_values`` → ``{input_name: literal}``.
 
@@ -145,8 +161,7 @@ def widget_inputs(oi, type_, values):
             out[k] = option
             vi += 1
             cfg = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
-            chosen = next((o for o in cfg.get("options", [])
-                           if o.get("key") == option), None)
+            chosen = _dyn_chosen(cfg, option)
             for sec in ("required", "optional"):
                 for sub, sub_spec in ((chosen or {}).get("inputs", {})
                                       .get(sec, {}).items()):
@@ -614,11 +629,11 @@ def _widget_walk(oi: dict, type_: str, values: list) -> tuple[list, int]:
         if spec[0] == "COMFY_DYNAMICCOMBO_V3":
             option = values[vi] if vi < len(values) else None
             if vi < len(values):
-                items.append((k, ["COMBO", {"options": [o.get("key") for o in cfg.get("options", [])]}],
-                              option))
+                keys = [_dyn_option_key(o) for o in cfg.get("options", []) or []]
+                items.append((k, ["COMBO", {"options": keys}], option))
             vi += 1
             expected += 1
-            chosen = next((o for o in cfg.get("options", []) if o.get("key") == option), None)
+            chosen = _dyn_chosen(cfg, option)
             for sec in ("required", "optional"):
                 for sub, sub_spec in ((chosen or {}).get("inputs", {}).get(sec, {}).items()):
                     if not is_widget(sub_spec):

@@ -568,6 +568,31 @@ def test_validator_counts_dynamic_combo_sub_widgets_and_checks_their_ranges():
     assert not any("widgets_values" in e or "placement_mode NOT" in e for e in errs)
 
 
+def test_dynamic_combo_tolerates_bare_string_options():
+    """T13d: a dynamic-combo option list may mix bare strings (no sub-widgets)
+    with {"key", "inputs"} dicts; o.get("key") on a string raised
+    AttributeError and took the whole validate/run down."""
+    oi = _dyn_oi()
+    opts = oi["DecimateMesh"]["input"]["required"]["placement_mode"][1]["options"]
+    opts.insert(0, "uniform")
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "uniform"])
+    assert want == 2
+    assert items[-1] == ("placement_mode",
+                         ["COMBO", {"options": ["uniform", "midpoint", "qem"]}], "uniform")
+    # The dict options still drive their sub-widgets alongside a string one.
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "qem", 0.25])
+    assert want == 3 and items[-1] == ("placement_mode.weight",
+                                       ["FLOAT", {"min": 0.0, "max": 0.5}], 0.25)
+    assert C.widget_inputs(oi, "DecimateMesh", [50000, "uniform"]) == {
+        "target_faces": 50000, "placement_mode": "uniform"}
+    assert C.widget_inputs(oi, "DecimateMesh", [50000, "qem", 0.25])[
+        "placement_mode.weight"] == 0.25
+    ui = {"nodes": [{"id": 1, "type": "DecimateMesh", "inputs": [], "outputs": [],
+                     "widgets_values": [50000, "uniform"]}], "links": []}
+    errs, _ = C.validate_ui(ui, oi)
+    assert not any("widgets_values" in e or "placement_mode" in e for e in errs)
+
+
 def test_validator_accepts_comma_union_input_types():
     assert C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF,FILE_3D", "FILE_3D_GLB")
     assert not C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF", "IMAGE")
