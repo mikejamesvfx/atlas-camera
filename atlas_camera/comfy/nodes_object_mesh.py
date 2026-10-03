@@ -262,157 +262,231 @@ class AtlasImportGeneratedMesh:
                     name="object", on_gate_fail="refuse", match_colour=True):
         torch = _require_torch()
         np = _require_numpy()
-        from atlas_camera.blender.measured import meshes_to_primitives
-        from atlas_camera.core.generated_mesh import (
-            cluster_decimate,
-            ground_contact_scale,
-            match_vertex_colours,
-            photo_visibility_weights,
-            pixal_to_source_camera,
-            register_object_scale,
-            scale_verdict,
-            source_camera_to_world,
-        )
-        from atlas_camera.core.object_crop import ObjectCropCamera
-        from atlas_camera.core.plate_falsification import score_geometry_against_plate
 
         solve_out = copy.deepcopy(solve)
         name = str(name or "object").strip() or "object"
         lines: list[str] = []
-        blank = None
 
-        setup = _metric_depth_and_validity(solve_out, depth, exclude_mask=sky_mask)
-        if setup is None:
-            raise ValueError("AtlasImportGeneratedMesh: solve has no usable focal length")
+        setup, crop, view, blank = _import_setup(torch, np, solve_out, depth, sky_mask,
+                                                 object_crop, lines)
         w, h = int(setup.width), int(setup.height)
-        blank = torch.zeros(1, h, w, dtype=torch.float32)
-        view = np.asarray(setup.extr.camera_view_matrix, dtype=np.float64)
-        crop = ObjectCropCamera.from_dict(object_crop)
-        if (crop.source_width, crop.source_height) != (w, h):
-            lines.append(f"warning: crop was made at {crop.source_width}x{crop.source_height}, "
-                         f"solve raster is {w}x{h}")
-
-        verts, faces, cols = _mesh_item(np, mesh)
-        n_in = len(faces)
-        verts, faces, cols = cluster_decimate(verts, faces, max_faces=int(max_faces),
-                                              colours=cols)
-        if len(faces) < n_in:
-            lines.append(f"decimated {n_in} -> {len(faces)} faces (max_faces {int(max_faces)}; "
-                         "decimate upstream with DecimateMesh for better quality)")
+        verts, faces, cols = _import_mesh_arrays(np, mesh, max_faces, lines)
 
         obj = _resolve_exclude_mask(object_mask, h, w)
         if obj is None or not bool(obj.any()):
             return (solve_out, "REFUSED — object_mask is empty; solve passed through", blank)
         sky = _resolve_exclude_mask(sky_mask, h, w) if sky_mask is not None else None
 
-        cam_pts = pixal_to_source_camera(verts, rotation=crop.rotation, fov_deg=crop.fov_deg)
-        reg = register_object_scale(
-            cam_pts, faces, view_matrix=view, fx=setup.fx, fy=setup.fy, cx=setup.cx,
-            cy=setup.cy, width=w, height=h, metric_depth=setup.metric,
-            object_mask=obj, depth_valid=setup.valid)
-        s = reg.get("scale")
-        s_ground = ground_contact_scale(cam_pts, view_matrix=view) if rests_on_ground else None
-        verdict = scale_verdict(rel_mad=reg["rel_mad"], depth_scale=s, ground_scale=s_ground)
-        issues = list(verdict["issues"])
-        if reg.get("reason"):
-            issues.append(reg["reason"])
-
+        cam_pts, reg, s, s_ground, verdict, issues = _register_scale(
+            np, verts, faces, crop, view, setup, obj, rests_on_ground)
         alpha = reg["unit_alpha"]
-        score: dict[str, Any] = {}
-        if bool(alpha.any()) and s is not None:
-            score = score_geometry_against_plate(
-                alpha=alpha, render_depth=reg["unit_depth"] * s, sky_mask=sky,
-                observed_mask=obj,
-                reference_depth=np.where(setup.valid, setup.metric, np.nan))
-            for key in ("depth_order_agreement", "sky_violation"):
-                m = score.get(key) or {}
-                if m.get("available") and m.get("pass") is False:
-                    verdict["grade"] = "refuse"
-                    issues.append(f"{key} {m['value']:.3f} fails its definitional gate "
-                                  f"({m['threshold']})")
-            iou = score.get("silhouette_iou") or {}
-            if iou.get("available") and iou.get("pass") is False:
-                issues.append(f"silhouette IoU {iou['value']:.3f} < {iou['threshold']} "
-                              "(inspect; calibrated on another fixture)")
-                if verdict["grade"] == "ok":
-                    verdict["grade"] = "inspect"
-        elif s is not None:
-            verdict["grade"] = "refuse"
-            issues.append("the mesh covers no pixel of the solve camera")
+        score = _grade_placement(np, reg, s, sky, obj, setup, verdict, issues)
         grade = verdict["grade"]
 
-        head = (f"AtlasImportGeneratedMesh '{name}': {len(verts)} verts / {len(faces)} faces; "
-                f"scale {s if s is None else round(s, 4)} "
-                f"(rel_mad {reg['rel_mad']:.4f} over {reg['registration_px']} px, "
-                "thresholds uncalibrated)")
-        if s_ground is not None:
-            head += f"; ground-contact scale {s_ground:.4f}"
-        report_tail = [f"grade: {grade.upper()}"] + [f"- {i}" for i in issues] + [
-            "hidden side: a model hypothesis — no reprojection test can verify it."]
-        if score:
-            report_tail.append("scores: " + json.dumps({
-                k: (round(v["value"], 4) if isinstance(v, dict) and v.get("available") else None)
-                for k, v in score.items() if isinstance(v, dict) and "available" in v}))
-
+        head, report_tail = _import_report_parts(name, verts, faces, s, s_ground, reg,
+                                                 grade, issues, score)
         if grade == "refuse" and on_gate_fail == "refuse":
             return (solve_out, "\n".join([head, "REFUSED — solve passed through", *lines,
                                           *report_tail]), blank)
 
-        world = source_camera_to_world(cam_pts, view_matrix=view, scale=float(s))
-        weight, wstats = photo_visibility_weights(
-            world, faces, view_matrix=view, fx=setup.fx, fy=setup.fy, cx=setup.cx,
-            cy=setup.cy, width=w, height=h, object_mask=obj, metric_depth=setup.metric,
-            mesh_depth=reg["unit_depth"] * float(s))
+        world, weight, wstats = _photo_weights(np, cam_pts, faces, view, s, setup, obj, reg)
+        cols, colour_note = _grade_vertex_colours(torch, np, cols, weight, world, view, setup,
+                                                  image, match_colour)
 
-        colour_note = "no vertex colours on the MESH — hidden side painted neutral grey " \
-                      "(wire PaintMesh upstream)"
-        if cols is None:
-            cols = np.full((len(world), 3), 0.5)
-        elif match_colour:
-            img = _image_at_solve(torch, image, w, h)[0, ..., :3].cpu().numpy()
-            vmc = world @ view[:3, :3].T + view[:3, 3]
-            fwd = np.maximum(-vmc[:, 2], 1e-9)
-            ix = np.clip(np.rint(setup.cx + setup.fx * vmc[:, 0] / fwd), 0, w - 1).astype(int)
-            iy = np.clip(np.rint(setup.cy - setup.fy * vmc[:, 1] / fwd), 0, h - 1).astype(int)
-            cols, crep = match_vertex_colours(cols, weight, img[iy, ix])
-            colour_note = (f"vertex colours graded onto the plate: gain "
-                           f"{[round(g, 3) for g in crep['gain']]} over "
-                           f"{crep['seen_vertices']} seen vertices"
-                           + (" (CLAMPED)" if any(crep["clamped"]) else "")
-                           + ("" if crep["applied"] else " — too few seen vertices, not applied"))
-        else:
-            colour_note = "vertex colours used as generated (match_colour off)"
-
-        accepted, rejected = meshes_to_primitives(
-            solve_out, [{"name": name, "vertices": world, "faces": faces}],
-            source=GENERATED_SOURCE, name_prefix=GENERATED_SOURCE, min_y_m=-1e3)
-        if not accepted:
-            why = rejected[0]["reason"] if rejected else "unknown"
+        prim, why = _append_generated_prim(np, solve_out, name, world, faces, cols, weight,
+                                           grade=grade, issues=issues, s=s, reg=reg,
+                                           crop=crop, wstats=wstats)
+        if prim is None:
             return (solve_out, "\n".join([head, f"REFUSED — mesh rejected: {why}", *lines,
                                           *report_tail]), blank)
-        prim = accepted[0]
-        meta = prim.metadata
-        meta["vertex_colors"] = np.round(np.clip(cols, 0.0, 1.0).reshape(-1), 3).tolist()
-        meta["photo_weight"] = np.round(weight, 3).tolist()
-        meta["generated_grade"] = grade
-        meta["generated_issues"] = "; ".join(issues)
-        meta["generated_scale"] = float(s)
-        meta["generated_rel_mad"] = float(reg["rel_mad"])
-        meta["generated_fov_deg"] = float(crop.fov_deg)
-        meta["photo_fraction"] = float(wstats["photo_fraction"])
-        solve_out.projection_scene.proxy_geometry.append(prim)
-        dbg = solve_out.projection_scene.debug_metadata
-        dbg.setdefault("generated_objects", []).append({
-            "name": prim.name, "grade": grade, "scale": float(s),
-            "rel_mad": float(reg["rel_mad"]), "issues": issues,
-            "photo_visibility": wstats,
-        })
 
         coverage = torch.from_numpy(alpha.astype(np.float32))[None]
         body = [head, f"APPENDED as PROXY_ROLE mesh '{prim.name}' "
                       f"(photo paints {wstats['photo_fraction'] * 100:.0f}% of vertices)",
                 colour_note, *lines, *report_tail]
         return (solve_out, "\n".join(body), coverage)
+
+
+def _import_setup(torch, np, solve_out, depth, sky_mask, object_crop, lines):
+    """Gate: metric depth on the solve raster + the crop camera.
+
+    Returns ``(setup, crop, view, blank)``; a crop made at another raster is
+    a warning appended to ``lines``.
+    """
+    from atlas_camera.core.object_crop import ObjectCropCamera
+
+    setup = _metric_depth_and_validity(solve_out, depth, exclude_mask=sky_mask)
+    if setup is None:
+        raise ValueError("AtlasImportGeneratedMesh: solve has no usable focal length")
+    w, h = int(setup.width), int(setup.height)
+    blank = torch.zeros(1, h, w, dtype=torch.float32)
+    view = np.asarray(setup.extr.camera_view_matrix, dtype=np.float64)
+    crop = ObjectCropCamera.from_dict(object_crop)
+    if (crop.source_width, crop.source_height) != (w, h):
+        lines.append(f"warning: crop was made at {crop.source_width}x{crop.source_height}, "
+                     f"solve raster is {w}x{h}")
+    return setup, crop, view, blank
+
+
+def _import_mesh_arrays(np, mesh, max_faces, lines):
+    """The MESH as numpy, decimated to the face budget (noted in ``lines``)."""
+    from atlas_camera.core.generated_mesh import cluster_decimate
+
+    verts, faces, cols = _mesh_item(np, mesh)
+    n_in = len(faces)
+    verts, faces, cols = cluster_decimate(verts, faces, max_faces=int(max_faces),
+                                          colours=cols)
+    if len(faces) < n_in:
+        lines.append(f"decimated {n_in} -> {len(faces)} faces (max_faces {int(max_faces)}; "
+                     "decimate upstream with DecimateMesh for better quality)")
+    return verts, faces, cols
+
+
+def _register_scale(np, verts, faces, crop, view, setup, obj, rests_on_ground):
+    """Compute: the mesh in the source camera and its one scale along the rays.
+
+    Returns ``(cam_pts, reg, scale, ground_scale, verdict, issues)``.
+    """
+    from atlas_camera.core.generated_mesh import (
+        ground_contact_scale,
+        pixal_to_source_camera,
+        register_object_scale,
+        scale_verdict,
+    )
+
+    w, h = int(setup.width), int(setup.height)
+    cam_pts = pixal_to_source_camera(verts, rotation=crop.rotation, fov_deg=crop.fov_deg)
+    reg = register_object_scale(
+        cam_pts, faces, view_matrix=view, fx=setup.fx, fy=setup.fy, cx=setup.cx,
+        cy=setup.cy, width=w, height=h, metric_depth=setup.metric,
+        object_mask=obj, depth_valid=setup.valid)
+    s = reg.get("scale")
+    s_ground = ground_contact_scale(cam_pts, view_matrix=view) if rests_on_ground else None
+    verdict = scale_verdict(rel_mad=reg["rel_mad"], depth_scale=s, ground_scale=s_ground)
+    issues = list(verdict["issues"])
+    if reg.get("reason"):
+        issues.append(reg["reason"])
+    return cam_pts, reg, s, s_ground, verdict, issues
+
+
+def _grade_placement(np, reg, s, sky, obj, setup, verdict, issues):
+    """Gate: score the placement against the plate; updates ``verdict`` /
+    ``issues`` in place and returns the score dict ({} when unscored)."""
+    from atlas_camera.core.plate_falsification import score_geometry_against_plate
+
+    alpha = reg["unit_alpha"]
+    score: dict[str, Any] = {}
+    if bool(alpha.any()) and s is not None:
+        score = score_geometry_against_plate(
+            alpha=alpha, render_depth=reg["unit_depth"] * s, sky_mask=sky,
+            observed_mask=obj,
+            reference_depth=np.where(setup.valid, setup.metric, np.nan))
+        for key in ("depth_order_agreement", "sky_violation"):
+            m = score.get(key) or {}
+            if m.get("available") and m.get("pass") is False:
+                verdict["grade"] = "refuse"
+                issues.append(f"{key} {m['value']:.3f} fails its definitional gate "
+                              f"({m['threshold']})")
+        iou = score.get("silhouette_iou") or {}
+        if iou.get("available") and iou.get("pass") is False:
+            issues.append(f"silhouette IoU {iou['value']:.3f} < {iou['threshold']} "
+                          "(inspect; calibrated on another fixture)")
+            if verdict["grade"] == "ok":
+                verdict["grade"] = "inspect"
+    elif s is not None:
+        verdict["grade"] = "refuse"
+        issues.append("the mesh covers no pixel of the solve camera")
+    return score
+
+
+def _import_report_parts(name, verts, faces, s, s_ground, reg, grade, issues, score):
+    """Report: ``(head, tail_lines)`` shared by every import outcome."""
+    head = (f"AtlasImportGeneratedMesh '{name}': {len(verts)} verts / {len(faces)} faces; "
+            f"scale {s if s is None else round(s, 4)} "
+            f"(rel_mad {reg['rel_mad']:.4f} over {reg['registration_px']} px, "
+            "thresholds uncalibrated)")
+    if s_ground is not None:
+        head += f"; ground-contact scale {s_ground:.4f}"
+    report_tail = [f"grade: {grade.upper()}"] + [f"- {i}" for i in issues] + [
+        "hidden side: a model hypothesis — no reprojection test can verify it."]
+    if score:
+        report_tail.append("scores: " + json.dumps({
+            k: (round(v["value"], 4) if isinstance(v, dict) and v.get("available") else None)
+            for k, v in score.items() if isinstance(v, dict) and "available" in v}))
+    return head, report_tail
+
+
+def _photo_weights(np, cam_pts, faces, view, s, setup, obj, reg):
+    """Compute: world vertices + per-vertex photo weight ``(world, weight, wstats)``."""
+    from atlas_camera.core.generated_mesh import photo_visibility_weights, source_camera_to_world
+
+    w, h = int(setup.width), int(setup.height)
+    world = source_camera_to_world(cam_pts, view_matrix=view, scale=float(s))
+    weight, wstats = photo_visibility_weights(
+        world, faces, view_matrix=view, fx=setup.fx, fy=setup.fy, cx=setup.cx,
+        cy=setup.cy, width=w, height=h, object_mask=obj, metric_depth=setup.metric,
+        mesh_depth=reg["unit_depth"] * float(s))
+    return world, weight, wstats
+
+
+def _grade_vertex_colours(torch, np, cols, weight, world, view, setup, image, match_colour):
+    """Hidden-side colour: grey without vertex colours, else optionally graded
+    onto the plate. Returns ``(colours, note)``."""
+    from atlas_camera.core.generated_mesh import match_vertex_colours
+
+    w, h = int(setup.width), int(setup.height)
+    colour_note = "no vertex colours on the MESH — hidden side painted neutral grey " \
+                  "(wire PaintMesh upstream)"
+    if cols is None:
+        cols = np.full((len(world), 3), 0.5)
+    elif match_colour:
+        img = _image_at_solve(torch, image, w, h)[0, ..., :3].cpu().numpy()
+        vmc = world @ view[:3, :3].T + view[:3, 3]
+        fwd = np.maximum(-vmc[:, 2], 1e-9)
+        ix = np.clip(np.rint(setup.cx + setup.fx * vmc[:, 0] / fwd), 0, w - 1).astype(int)
+        iy = np.clip(np.rint(setup.cy - setup.fy * vmc[:, 1] / fwd), 0, h - 1).astype(int)
+        cols, crep = match_vertex_colours(cols, weight, img[iy, ix])
+        colour_note = (f"vertex colours graded onto the plate: gain "
+                       f"{[round(g, 3) for g in crep['gain']]} over "
+                       f"{crep['seen_vertices']} seen vertices"
+                       + (" (CLAMPED)" if any(crep["clamped"]) else "")
+                       + ("" if crep["applied"] else " — too few seen vertices, not applied"))
+    else:
+        colour_note = "vertex colours used as generated (match_colour off)"
+    return cols, colour_note
+
+
+def _append_generated_prim(np, solve_out, name, world, faces, cols, weight, *, grade, issues,
+                           s, reg, crop, wstats):
+    """APPEND the mesh as a PROXY_ROLE primitive on ``solve_out``.
+
+    Returns ``(prim, None)``, or ``(None, reason)`` when the mesh is rejected.
+    """
+    from atlas_camera.blender.measured import meshes_to_primitives
+
+    accepted, rejected = meshes_to_primitives(
+        solve_out, [{"name": name, "vertices": world, "faces": faces}],
+        source=GENERATED_SOURCE, name_prefix=GENERATED_SOURCE, min_y_m=-1e3)
+    if not accepted:
+        return None, (rejected[0]["reason"] if rejected else "unknown")
+    prim = accepted[0]
+    meta = prim.metadata
+    meta["vertex_colors"] = np.round(np.clip(cols, 0.0, 1.0).reshape(-1), 3).tolist()
+    meta["photo_weight"] = np.round(weight, 3).tolist()
+    meta["generated_grade"] = grade
+    meta["generated_issues"] = "; ".join(issues)
+    meta["generated_scale"] = float(s)
+    meta["generated_rel_mad"] = float(reg["rel_mad"])
+    meta["generated_fov_deg"] = float(crop.fov_deg)
+    meta["photo_fraction"] = float(wstats["photo_fraction"])
+    solve_out.projection_scene.proxy_geometry.append(prim)
+    dbg = solve_out.projection_scene.debug_metadata
+    dbg.setdefault("generated_objects", []).append({
+        "name": prim.name, "grade": grade, "scale": float(s),
+        "rel_mad": float(reg["rel_mad"]), "issues": issues,
+        "photo_visibility": wstats,
+    })
+    return prim, None
 
 
 def _resolve_output_path(path: str) -> str:

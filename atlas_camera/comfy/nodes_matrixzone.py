@@ -174,173 +174,248 @@ class AtlasMatrixZoneStitch:
                filename_prefix="atlas/hdr_plate", destripe=True, sdr_plate=None,
                detail_from_sdr=True):
         # INPUT_IS_LIST: ComfyUI hands every input as a list; tests and direct
-        # callers may pass scalars. first() accepts both.
+        # callers may pass scalars. _first() accepts both.
         np = _require_numpy()
         torch = _require_torch()
         from atlas_camera.core.matrixzone import stitch as mz_stitch
 
         handle = matrixzone[0] if isinstance(matrixzone, list) else matrixzone
-        first = lambda v: v[0] if isinstance(v, list) else v  # noqa: E731
-        anchor, split_px = bool(first(anchor)), int(first(split_px))
-        colorspace, filename_prefix = str(first(colorspace)), str(first(filename_prefix))
+        anchor, split_px = bool(_first(anchor)), int(_first(split_px))
+        colorspace, filename_prefix = str(_first(colorspace)), str(_first(filename_prefix))
         plan, mode = handle["plan"], handle["mode"]
-        clips = [np.asarray(c.detach().cpu().float().numpy()) if hasattr(c, "detach")
-                 else np.asarray(c, dtype=np.float32) for c in (hdr if isinstance(hdr, list) else [hdr])]
-        n_global = int(handle.get("n_global", 1))
-        expect = n_global + (1 if mode == "zones_as_frames" else len(plan["zones"]))
-        if len(clips) != expect:
-            raise ValueError(f"AtlasMatrixZoneStitch: got {len(clips)} clip(s), the split "
-                             f"made {expect} (is the LTX chain fed the split's clips list?)")
+        clips = _stitch_clips(np, hdr, handle)
         glob = np.median(clips[0], axis=0) if anchor else None
-        if mode == "zones_as_frames":
-            seq = clips[1]
-            frame_of_zone = handle["frame_of_zone"]
-            zones = [seq[min(f, len(seq) - 1)] for f in frame_of_zone]
-        else:
-            zones = [np.median(c, axis=0) for c in clips[1:]]
-        zones = [z[..., :3] for z in zones]
+        zones = _zone_images(np, clips, handle)
         plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
                                split_px=split_px or None)
-        destripe = bool(first(destripe))
-        sdr = first(sdr_plate) if sdr_plate is not None else None
-        stripe_rep, sdr_lin, s_disp = None, None, None
-        if sdr is not None:
-            from atlas_camera.core.generated_mesh import srgb_to_linear
-            from atlas_camera.core.matrixzone import resize_bilinear
-            s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
-                              else sdr[0], dtype=np.float32)[..., :3]
-            if s_np.shape[:2] != plate.shape[:2]:
-                s_np = resize_bilinear(s_np, plate.shape[0], plate.shape[1])
-            s_disp = s_np
-            sdr_lin = srgb_to_linear(s_np)
-        local_rep = None
-        if destripe and sdr_lin is not None:
-            from atlas_camera.core.matrixzone import (
-                destripe_columns,
-                destripe_local,
-                zone_row_bands,
-            )
-            plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
-            plate, local_rep = destripe_local(plate, sdr_lin)
-        xfer_rep = None
-        if bool(first(detail_from_sdr)) and s_disp is not None:
-            from atlas_camera.core.matrixzone import sdr_detail_transfer
-            plate, xfer_rep = sdr_detail_transfer(plate, s_disp)
+        destripe = bool(_first(destripe))
+        detail_from_sdr = bool(_first(detail_from_sdr))
+        sdr = _first(sdr_plate) if sdr_plate is not None else None
+        sdr_lin, s_disp = _sdr_reference(np, sdr, plate.shape)
+        plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
+            plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
 
-        exr_path, exr_note = "", ""
-        try:
-            from atlas_camera.comfy.nodes_scene3d import _output_paths
-            from atlas_camera.plate.oiio_io import write_exr
-            folder, stem = _output_paths(filename_prefix)
-            folder.mkdir(parents=True, exist_ok=True)
-            exr_path = str(folder / f"{stem}.exr")
-            write_exr(exr_path, plate.astype(np.float32), bit_depth="half",
-                      source_colorspace=colorspace,
-                      extra_attribs={"atlas:content": "matrixZone SDR->HDR model reconstruction"})
-        except Exception as exc:  # noqa: BLE001 - still return the preview + report
-            exr_note = f"EXR not written: {type(exc).__name__}: {exc}"
+        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix)
+        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path)
 
-        # Gate on what SHIPS: the decoded EXR (half + lossy DWAB), not the float
-        # in memory. Found live 2026-10-02: the two scored the worst seam 3.78x
-        # vs 2.34x on one plate. When they disagree the report carries the diff
-        # so the cause can be bisected from the report alone.
-        from atlas_camera.core.matrixzone import seam_step_test
-        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
-        step, delivered, diff_note = step_mem, None, ""
-        if exr_path:
-            try:
-                from atlas_camera.plate.oiio_io import _require_oiio
-                oiio = _require_oiio()
-                delivered = np.asarray(oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT),
-                                       dtype=np.float32)[..., :3]
-                if delivered.shape != plate.shape[:2] + (3,):
-                    diff_note = (f"decoded EXR is {delivered.shape[:2]}, plate "
-                                 f"{plate.shape[:2]} - scored in memory")
-                    delivered = None
-                else:
-                    step = seam_step_test(delivered, plan, sdr_linear=sdr_lin)
-            except Exception as exc:  # noqa: BLE001 - fall back to the in-memory score
-                diff_note = f"EXR read-back failed ({type(exc).__name__}) - scored in memory"
-                delivered = None
-        if delivered is not None:
-            wm, wd = step_mem["worst"], step["worst"]
-            if wm and wd and (abs(wm["ratio"] - wd["ratio"]) > 0.25
-                              or step_mem["flagged"] != step["flagged"]):
-                mem3 = np.asarray(plate, dtype=np.float32)[..., :3]
-                lr = np.log2(np.maximum(np.abs(delivered), 1e-6)) - \
-                    np.log2(np.maximum(np.abs(mem3), 1e-6))
-                x = wm["at_px"]
-                band = (slice(None), slice(max(0, x - 100), x + 100)) if wm["orientation"] == "v" \
-                    else (slice(max(0, x - 100), x + 100), slice(None))
-                diff_note = (
-                    f"in-memory vs delivered DISAGREE: worst {wm['seam']} {wm['ratio']:.2f}x in memory, "
-                    f"{wd['seam']} {wd['ratio']:.2f}x in the file; flags {step_mem['flagged']} vs "
-                    f"{step['flagged']}. diff: max |log2| {float(np.nanmax(np.abs(lr))):.3f}, "
-                    f"mean log2 {float(np.nanmean(lr)):+.4f} (band at {x} px: "
-                    f"{float(np.nanmean(lr[band])):+.4f}); memory nan {int(np.isnan(mem3).sum())} "
-                    f"neg {int((mem3 < 0).sum())} dtype {np.asarray(plate).dtype}; file nan "
-                    f"{int(np.isnan(delivered).sum())} neg {int((delivered < 0).sum())}")
-
-        def fmt(seams):
-            return ", ".join(f"{s['seam']} {s['median_stops']:.3f}/{s['p95_stops']:.3f}"
-                             for s in seams) or "(no interior seams)"
-        lines = [f"AtlasMatrixZoneStitch: {len(zones)} zones ({mode}) -> "
-                 f"{plate.shape[1]}x{plate.shape[0]} {colorspace} half EXR "
-                 f"{exr_path or '(not written)'}",
-                 f"seams before, log2 luminance median/p95 stops: {fmt(rep['seams_before'])}"]
-        if rep.get("anchored"):
-            lines.append(f"seams after radiance anchor (split {rep['split_px']} px): "
-                         f"{fmt(rep['seams_after_anchor'])}")
-        else:
-            lines.append("radiance anchor OFF: zones keep their own low frequencies")
-        if stripe_rep:
-            lines.append(f"destripe: vertical ripple the conversion added "
-                         f"{stripe_rep['ripple_before_stops']:.4f} -> "
-                         f"{stripe_rep['ripple_after_stops']:.4f} stops rms "
-                         f"({stripe_rep['bands']} band(s) of <= 1/4 plate height, {stripe_rep['window_px']} px)")
-        if local_rep:
-            lines.append(f"local destripe (flat regions incl. clipped highlights, "
-                         f"{local_rep['rows']}-row windows): correction p99 "
-                         f"{local_rep['field_p99_stops']:.3f} stops, max "
-                         f"{local_rep['field_max_stops']:.3f}; {local_rep['flat_fraction']:.0%} of "
-                         "the plate flat enough to measure")
-        elif destripe:
-            lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
-        if xfer_rep:
-            lines.append(f"detail from SDR (guided filter r{xfer_rep['radius_px']}): structure from "
-                         f"the SDR, radiance from the conversion; HDR pixels kept on "
-                         f"{xfer_rep['kept_hdr_fraction']:.0%} (clipped highlights); change p50 "
-                         f"{xfer_rep['change_p50_stops']:.3f} / p99 {xfer_rep['change_p99_stops']:.3f} stops")
-        elif bool(first(detail_from_sdr)):
-            lines.append("detail from SDR skipped: wire sdr_plate")
-        if step["seams"]:
-            base = sorted({f"{s['orientation']} {s['baseline_stops']:.3f}" for s in step["seams"]
-                           if s["baseline_stops"] is not None})
-            w = step["worst"]
-            lines.append(
-                f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
-                f"{step['strip_px']} px strips, "
-                + ("SDR-controlled" if step["sdr_controlled"] else
-                   "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
-                + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
-                f"[{', '.join(base)} stops]): "
-                + ("PASS" if step["pass"] else
-                   f"{len(step['flagged'])} seam(s) FLAGGED: {', '.join(step['flagged'])}")
-                + (f"; worst {w['seam']} at {w['at_px']} px, {w['step_stops']:.3f} stops = "
-                   f"{w['ratio']:.2f}x" if w else ""))
-            if step["flagged"]:
-                lines.append("  a flagged seam is either a tonal seam or real structure that "
-                             "happens to sit on the line -- look at it before trusting the plate")
-        if diff_note:
-            lines.append(f"  {diff_note}")
-        if rep.get("resized_zones"):
-            lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
-                         "different size and were resampled to their renderRect")
-        lines.append(f"range: max {float(plate.max()):.2f}, p99 "
-                     f"{float(np.percentile(plate, 99)):.3f} (linear); a MODEL RECONSTRUCTION "
-                     "of highlight radiance from a display-referred plate, not photographed HDR")
-        if exr_note:
-            lines.append(exr_note)
-        report = "\n".join(lines)
+        report = _stitch_report(
+            np, plate, rep, step, zones=zones, mode=mode, colorspace=colorspace,
+            exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
+            stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
+            destripe=destripe, detail_from_sdr=detail_from_sdr)
         preview = torch.from_numpy(_tonemap_preview(np, plate).astype(np.float32))[None]
         return {"ui": {"text": [report]}, "result": (preview, exr_path, report)}
+
+
+def _first(v):
+    """Element 0 of an INPUT_IS_LIST list, or the scalar itself."""
+    return v[0] if isinstance(v, list) else v
+
+
+def _stitch_clips(np, hdr, handle):
+    """Gate: the hdr LIST as float numpy clips, refused unless it matches the split."""
+    plan, mode = handle["plan"], handle["mode"]
+    clips = [np.asarray(c.detach().cpu().float().numpy()) if hasattr(c, "detach")
+             else np.asarray(c, dtype=np.float32) for c in (hdr if isinstance(hdr, list) else [hdr])]
+    n_global = int(handle.get("n_global", 1))
+    expect = n_global + (1 if mode == "zones_as_frames" else len(plan["zones"]))
+    if len(clips) != expect:
+        raise ValueError(f"AtlasMatrixZoneStitch: got {len(clips)} clip(s), the split "
+                         f"made {expect} (is the LTX chain fed the split's clips list?)")
+    return clips
+
+
+def _zone_images(np, clips, handle):
+    """One RGB image per zone: the zone's frame, or the median over its clip."""
+    if handle["mode"] == "zones_as_frames":
+        seq = clips[1]
+        frame_of_zone = handle["frame_of_zone"]
+        zones = [seq[min(f, len(seq) - 1)] for f in frame_of_zone]
+    else:
+        zones = [np.median(c, axis=0) for c in clips[1:]]
+    return [z[..., :3] for z in zones]
+
+
+def _sdr_reference(np, sdr, plate_shape):
+    """``(sdr_linear, sdr_display)`` at the plate's raster, or ``(None, None)``."""
+    if sdr is None:
+        return None, None
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import resize_bilinear
+    s_np = np.asarray(sdr[0].detach().cpu().float().numpy() if hasattr(sdr, "detach")
+                      else sdr[0], dtype=np.float32)[..., :3]
+    if s_np.shape[:2] != plate_shape[:2]:
+        s_np = resize_bilinear(s_np, plate_shape[0], plate_shape[1])
+    return srgb_to_linear(s_np), s_np
+
+
+def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
+    """Destripe and SDR detail transfer, each only when the SDR plate is wired.
+
+    Returns ``(plate, stripe_rep, local_rep, xfer_rep)``; a skipped step's
+    report is None.
+    """
+    stripe_rep, local_rep, xfer_rep = None, None, None
+    if destripe and sdr_lin is not None:
+        from atlas_camera.core.matrixzone import (
+            destripe_columns,
+            destripe_local,
+            zone_row_bands,
+        )
+        plate, stripe_rep = destripe_columns(plate, sdr_lin, bands=zone_row_bands(plan))
+        plate, local_rep = destripe_local(plate, sdr_lin)
+    if detail_from_sdr and s_disp is not None:
+        from atlas_camera.core.matrixzone import sdr_detail_transfer
+        plate, xfer_rep = sdr_detail_transfer(plate, s_disp)
+    return plate, stripe_rep, local_rep, xfer_rep
+
+
+def _write_plate_exr(np, plate, colorspace, filename_prefix):
+    """``(exr_path, note)``; a failed write leaves the path empty and says why."""
+    exr_path, exr_note = "", ""
+    try:
+        from atlas_camera.comfy.nodes_scene3d import _output_paths
+        from atlas_camera.plate.oiio_io import write_exr
+        folder, stem = _output_paths(filename_prefix)
+        folder.mkdir(parents=True, exist_ok=True)
+        exr_path = str(folder / f"{stem}.exr")
+        write_exr(exr_path, plate.astype(np.float32), bit_depth="half",
+                  source_colorspace=colorspace,
+                  extra_attribs={"atlas:content": "matrixZone SDR->HDR model reconstruction"})
+    except Exception as exc:  # noqa: BLE001 - still return the preview + report
+        exr_note = f"EXR not written: {type(exc).__name__}: {exc}"
+    return exr_path, exr_note
+
+
+def _score_seams(np, plate, plan, sdr_lin, exr_path):
+    """Seam step test on what SHIPS: ``(step, delivered, diff_note)``.
+
+    Gate on the decoded EXR (half + lossy DWAB), not the float in memory.
+    Found live 2026-10-02: the two scored the worst seam 3.78x vs 2.34x on
+    one plate. When they disagree the report carries the diff so the cause
+    can be bisected from the report alone.
+    """
+    from atlas_camera.core.matrixzone import seam_step_test
+    step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+    step, delivered, diff_note = step_mem, None, ""
+    if exr_path:
+        try:
+            from atlas_camera.plate.oiio_io import _require_oiio
+            oiio = _require_oiio()
+            delivered = np.asarray(oiio.ImageBuf(exr_path).get_pixels(oiio.FLOAT),
+                                   dtype=np.float32)[..., :3]
+            if delivered.shape != plate.shape[:2] + (3,):
+                diff_note = (f"decoded EXR is {delivered.shape[:2]}, plate "
+                             f"{plate.shape[:2]} - scored in memory")
+                delivered = None
+            else:
+                step = seam_step_test(delivered, plan, sdr_linear=sdr_lin)
+        except Exception as exc:  # noqa: BLE001 - fall back to the in-memory score
+            diff_note = f"EXR read-back failed ({type(exc).__name__}) - scored in memory"
+            delivered = None
+    if delivered is not None:
+        diff_note = _memory_vs_delivered_note(np, plate, delivered, step_mem, step) or diff_note
+    return step, delivered, diff_note
+
+
+def _memory_vs_delivered_note(np, plate, delivered, step_mem, step):
+    """The diff note when the in-memory and delivered scores disagree, else ""."""
+    wm, wd = step_mem["worst"], step["worst"]
+    if not (wm and wd and (abs(wm["ratio"] - wd["ratio"]) > 0.25
+                           or step_mem["flagged"] != step["flagged"])):
+        return ""
+    mem3 = np.asarray(plate, dtype=np.float32)[..., :3]
+    lr = np.log2(np.maximum(np.abs(delivered), 1e-6)) - \
+        np.log2(np.maximum(np.abs(mem3), 1e-6))
+    x = wm["at_px"]
+    band = (slice(None), slice(max(0, x - 100), x + 100)) if wm["orientation"] == "v" \
+        else (slice(max(0, x - 100), x + 100), slice(None))
+    return (
+        f"in-memory vs delivered DISAGREE: worst {wm['seam']} {wm['ratio']:.2f}x in memory, "
+        f"{wd['seam']} {wd['ratio']:.2f}x in the file; flags {step_mem['flagged']} vs "
+        f"{step['flagged']}. diff: max |log2| {float(np.nanmax(np.abs(lr))):.3f}, "
+        f"mean log2 {float(np.nanmean(lr)):+.4f} (band at {x} px: "
+        f"{float(np.nanmean(lr[band])):+.4f}); memory nan {int(np.isnan(mem3).sum())} "
+        f"neg {int((mem3 < 0).sum())} dtype {np.asarray(plate).dtype}; file nan "
+        f"{int(np.isnan(delivered).sum())} neg {int((delivered < 0).sum())}")
+
+
+def _fmt_seams(seams):
+    return ", ".join(f"{s['seam']} {s['median_stops']:.3f}/{s['p95_stops']:.3f}"
+                     for s in seams) or "(no interior seams)"
+
+
+def _stitch_report(np, plate, rep, step, *, zones, mode, colorspace, exr_path, exr_note,
+                   delivered, diff_note, stripe_rep, local_rep, xfer_rep, destripe,
+                   detail_from_sdr):
+    """The stitch node's multi-line report."""
+    lines = [f"AtlasMatrixZoneStitch: {len(zones)} zones ({mode}) -> "
+             f"{plate.shape[1]}x{plate.shape[0]} {colorspace} half EXR "
+             f"{exr_path or '(not written)'}",
+             f"seams before, log2 luminance median/p95 stops: {_fmt_seams(rep['seams_before'])}"]
+    if rep.get("anchored"):
+        lines.append(f"seams after radiance anchor (split {rep['split_px']} px): "
+                     f"{_fmt_seams(rep['seams_after_anchor'])}")
+    else:
+        lines.append("radiance anchor OFF: zones keep their own low frequencies")
+    lines += _cleanup_report_lines(stripe_rep, local_rep, xfer_rep, destripe, detail_from_sdr)
+    lines += _seam_step_report_lines(step, delivered)
+    if diff_note:
+        lines.append(f"  {diff_note}")
+    if rep.get("resized_zones"):
+        lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
+                     "different size and were resampled to their renderRect")
+    lines.append(f"range: max {float(plate.max()):.2f}, p99 "
+                 f"{float(np.percentile(plate, 99)):.3f} (linear); a MODEL RECONSTRUCTION "
+                 "of highlight radiance from a display-referred plate, not photographed HDR")
+    if exr_note:
+        lines.append(exr_note)
+    return "\n".join(lines)
+
+
+def _cleanup_report_lines(stripe_rep, local_rep, xfer_rep, destripe, detail_from_sdr):
+    lines = []
+    if stripe_rep:
+        lines.append(f"destripe: vertical ripple the conversion added "
+                     f"{stripe_rep['ripple_before_stops']:.4f} -> "
+                     f"{stripe_rep['ripple_after_stops']:.4f} stops rms "
+                     f"({stripe_rep['bands']} band(s) of <= 1/4 plate height, {stripe_rep['window_px']} px)")
+    if local_rep:
+        lines.append(f"local destripe (flat regions incl. clipped highlights, "
+                     f"{local_rep['rows']}-row windows): correction p99 "
+                     f"{local_rep['field_p99_stops']:.3f} stops, max "
+                     f"{local_rep['field_max_stops']:.3f}; {local_rep['flat_fraction']:.0%} of "
+                     "the plate flat enough to measure")
+    elif destripe:
+        lines.append("destripe skipped: wire sdr_plate (the plate the split got)")
+    if xfer_rep:
+        lines.append(f"detail from SDR (guided filter r{xfer_rep['radius_px']}): structure from "
+                     f"the SDR, radiance from the conversion; HDR pixels kept on "
+                     f"{xfer_rep['kept_hdr_fraction']:.0%} (clipped highlights); change p50 "
+                     f"{xfer_rep['change_p50_stops']:.3f} / p99 {xfer_rep['change_p99_stops']:.3f} stops")
+    elif detail_from_sdr:
+        lines.append("detail from SDR skipped: wire sdr_plate")
+    return lines
+
+
+def _seam_step_report_lines(step, delivered):
+    if not step["seams"]:
+        return []
+    base = sorted({f"{s['orientation']} {s['baseline_stops']:.3f}" for s in step["seams"]
+                   if s["baseline_stops"] is not None})
+    w = step["worst"]
+    lines = [
+        f"seam step test ({'delivered EXR' if delivered is not None else 'in-memory plate'}, "
+        f"{step['strip_px']} px strips, "
+        + ("SDR-controlled" if step["sdr_controlled"] else
+           "NOT SDR-controlled - wire sdr_plate, structure on a line scores too")
+        + f", pass <= {step['ratio_max']:.1f}x random-line p{step['baseline_percentile']} "
+        f"[{', '.join(base)} stops]): "
+        + ("PASS" if step["pass"] else
+           f"{len(step['flagged'])} seam(s) FLAGGED: {', '.join(step['flagged'])}")
+        + (f"; worst {w['seam']} at {w['at_px']} px, {w['step_stops']:.3f} stops = "
+           f"{w['ratio']:.2f}x" if w else "")]
+    if step["flagged"]:
+        lines.append("  a flagged seam is either a tonal seam or real structure that "
+                     "happens to sit on the line -- look at it before trusting the plate")
+    return lines

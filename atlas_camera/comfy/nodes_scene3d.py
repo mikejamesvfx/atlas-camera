@@ -121,14 +121,9 @@ class AtlasSceneTo3D:
     def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene",
                max_glb_mb=GLB_BUDGET_MB):
         np = _require_numpy()
-        from atlas_camera.core.camera_math import ground_lookat_pivot
-        from atlas_camera.core.load3d_camera import identity_model_info, load3d_camera_info
-        from atlas_camera.exporters.scene_glb import build_scene_layers, write_scene_glb
+        from atlas_camera.exporters.scene_glb import build_scene_layers
 
-        cam = solve.camera
-        intr, extr = cam.intrinsics, cam.extrinsics
-        if extr is None or extr.camera_view_matrix is None or not intr.fy_px and not intr.fx_px:
-            raise ValueError("AtlasSceneTo3D: the solve has no usable camera")
+        intr, extr = _usable_camera(solve)
         folder, stem = _output_paths(filename_prefix)
         folder.mkdir(parents=True, exist_ok=True)
         primary = _image_tensor_to_pil(source_image)
@@ -136,70 +131,110 @@ class AtlasSceneTo3D:
         layers, sidecars, notes = build_scene_layers(
             solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem)
         glb_path = folder / f"{stem}.glb"
-        written = write_scene_glb(layers, glb_path)
-        mb = written["bytes"] / 1e6
-        if int(max_glb_mb or 0) > 0 and mb > int(max_glb_mb):
-            glb_path.unlink(missing_ok=True)
-            raise ValueError(
-                f"AtlasSceneTo3D: the GLB would be {mb:.0f} MB, over the {int(max_glb_mb)} MB "
-                f"budget ({len(written['layers'])} layers at full plate resolution) - feed a "
-                "smaller plate or fewer layers, or raise max_glb_mb (0 = no budget)")
+        written, mb = _write_glb_within_budget(layers, glb_path, max_glb_mb)
 
-        view = np.asarray(extr.camera_view_matrix, dtype=np.float64)
-        c2w = np.linalg.inv(view)
-        far = 10.0
-        for layer in layers:
-            v = np.asarray(layer.vertices, dtype=np.float64).reshape(-1, 3)
-            if len(v):
-                far = max(far, float(np.linalg.norm(v - c2w[:3, 3], axis=1).max()))
-        fy = float(intr.fy_px or intr.fx_px)
-        camera_info = load3d_camera_info(
-            view_matrix=view, fy=fy, image_width=int(intr.image_width),
-            image_height=int(intr.image_height),
-            target=list(ground_lookat_pivot(extr)), near=0.05, far=far * 1.5)
-        model_info = identity_model_info(1)
+        camera_info, model_info = _load3d_sockets(np, layers, intr, extr)
+        manifest_note = _scene_manifest(solve, folder, glb_path, sidecars, written)
 
-        manifest_note = ""
-        try:
-            from atlas_camera.comfy.node_reports import _write_export_manifest
-            manifest_note = _write_export_manifest(
-                solve, folder,
-                [("scene_glb", str(glb_path))]
-                + [("plate_exr", str(folder / s["exr"])) for s in sidecars],
-                "AtlasSceneTo3D", extra={"scene_glb_layers": written["layers"]})
-        except Exception as exc:  # noqa: BLE001 - a manifest never fails an export
-            manifest_note = f"manifest skipped: {exc}"
-
-        lines = [f"AtlasSceneTo3D: {len(written['layers'])} layer mesh(es) -> {glb_path} "
-                 f"({mb:.1f} MB)"]
-        for s in written["layers"]:
-            lines.append(f"- {s['name']}: {s['vertices']} verts / {s['faces']} faces"
-                         + (", textured" if s["textured"] else ", UNTEXTURED")
-                         + (", vertex-colour hidden side" if s["vertex_colour"] else ""))
-        for s in sidecars:
-            if s["exr"].endswith(".ply"):
-                lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
-                continue
-            lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']}"
-                         + ("" if s["scene_referred"] else
-                            " (linearised display plate, NOT scene-referred)"))
-        if not write_exr:
-            lines.append("- EXR sidecars off")
-        lines += [f"- {n}" for n in notes]
-        lines.append(f"camera: fov {camera_info['fov']:.2f} deg vertical, aspect "
-                     f"{camera_info['aspect']:.3f}, target = ground pivot")
-        cx, cy = float(intr.cx_px or intr.image_width / 2), float(intr.cy_px or intr.image_height / 2)
-        off = max(abs(cx - intr.image_width / 2), abs(cy - intr.image_height / 2))
-        if off > 1.0:
-            lines.append(f"note: principal point is {off:.1f} px off-centre; a Load3D "
-                         "perspective camera is centred, so its view is approximate")
-        if manifest_note:
-            lines.append(manifest_note)
-        if mb > GLB_WARN_MB:
-            lines.append("warning: large GLB - the browser 3D viewer may be slow to load it")
-        report = "\n".join(lines)
+        report = _export_report(glb_path, mb, written, sidecars, notes, write_exr,
+                                camera_info, intr, manifest_note)
         return {"ui": {"text": [report]},
                 "result": (_file3d(str(glb_path)), model_info, camera_info, str(glb_path), report)}
+
+
+def _usable_camera(solve):
+    """Gate: ``(intrinsics, extrinsics)``, refused without a view matrix and focal."""
+    cam = solve.camera
+    intr, extr = cam.intrinsics, cam.extrinsics
+    if extr is None or extr.camera_view_matrix is None or not intr.fy_px and not intr.fx_px:
+        raise ValueError("AtlasSceneTo3D: the solve has no usable camera")
+    return intr, extr
+
+
+def _write_glb_within_budget(layers, glb_path, max_glb_mb):
+    """Write the GLB; refuse (and delete it) past the size budget.
+
+    Returns ``(written, mb)``.
+    """
+    from atlas_camera.exporters.scene_glb import write_scene_glb
+
+    written = write_scene_glb(layers, glb_path)
+    mb = written["bytes"] / 1e6
+    if int(max_glb_mb or 0) > 0 and mb > int(max_glb_mb):
+        glb_path.unlink(missing_ok=True)
+        raise ValueError(
+            f"AtlasSceneTo3D: the GLB would be {mb:.0f} MB, over the {int(max_glb_mb)} MB "
+            f"budget ({len(written['layers'])} layers at full plate resolution) - feed a "
+            "smaller plate or fewer layers, or raise max_glb_mb (0 = no budget)")
+    return written, mb
+
+
+def _load3d_sockets(np, layers, intr, extr):
+    """Compute: ``(camera_info, model_info)`` for Load3D, far plane past every layer."""
+    from atlas_camera.core.camera_math import ground_lookat_pivot
+    from atlas_camera.core.load3d_camera import identity_model_info, load3d_camera_info
+
+    view = np.asarray(extr.camera_view_matrix, dtype=np.float64)
+    c2w = np.linalg.inv(view)
+    far = 10.0
+    for layer in layers:
+        v = np.asarray(layer.vertices, dtype=np.float64).reshape(-1, 3)
+        if len(v):
+            far = max(far, float(np.linalg.norm(v - c2w[:3, 3], axis=1).max()))
+    fy = float(intr.fy_px or intr.fx_px)
+    camera_info = load3d_camera_info(
+        view_matrix=view, fy=fy, image_width=int(intr.image_width),
+        image_height=int(intr.image_height),
+        target=list(ground_lookat_pivot(extr)), near=0.05, far=far * 1.5)
+    return camera_info, identity_model_info(1)
+
+
+def _scene_manifest(solve, folder, glb_path, sidecars, written) -> str:
+    """Export manifest note; a manifest never fails an export."""
+    manifest_note = ""
+    try:
+        from atlas_camera.comfy.node_reports import _write_export_manifest
+        manifest_note = _write_export_manifest(
+            solve, folder,
+            [("scene_glb", str(glb_path))]
+            + [("plate_exr", str(folder / s["exr"])) for s in sidecars],
+            "AtlasSceneTo3D", extra={"scene_glb_layers": written["layers"]})
+    except Exception as exc:  # noqa: BLE001 - a manifest never fails an export
+        manifest_note = f"manifest skipped: {exc}"
+    return manifest_note
+
+
+def _export_report(glb_path, mb, written, sidecars, notes, write_exr, camera_info, intr,
+                   manifest_note) -> str:
+    """The scene export node's multi-line report."""
+    lines = [f"AtlasSceneTo3D: {len(written['layers'])} layer mesh(es) -> {glb_path} "
+             f"({mb:.1f} MB)"]
+    for s in written["layers"]:
+        lines.append(f"- {s['name']}: {s['vertices']} verts / {s['faces']} faces"
+                     + (", textured" if s["textured"] else ", UNTEXTURED")
+                     + (", vertex-colour hidden side" if s["vertex_colour"] else ""))
+    for s in sidecars:
+        if s["exr"].endswith(".ply"):
+            lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
+            continue
+        lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']}"
+                     + ("" if s["scene_referred"] else
+                        " (linearised display plate, NOT scene-referred)"))
+    if not write_exr:
+        lines.append("- EXR sidecars off")
+    lines += [f"- {n}" for n in notes]
+    lines.append(f"camera: fov {camera_info['fov']:.2f} deg vertical, aspect "
+                 f"{camera_info['aspect']:.3f}, target = ground pivot")
+    cx, cy = float(intr.cx_px or intr.image_width / 2), float(intr.cy_px or intr.image_height / 2)
+    off = max(abs(cx - intr.image_width / 2), abs(cy - intr.image_height / 2))
+    if off > 1.0:
+        lines.append(f"note: principal point is {off:.1f} px off-centre; a Load3D "
+                     "perspective camera is centred, so its view is approximate")
+    if manifest_note:
+        lines.append(manifest_note)
+    if mb > GLB_WARN_MB:
+        lines.append("warning: large GLB - the browser 3D viewer may be slow to load it")
+    return "\n".join(lines)
 
 
 def camera_info_json(camera_info: dict) -> str:
