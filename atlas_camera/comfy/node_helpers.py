@@ -917,6 +917,7 @@ def build_segmentation_cascade(
     have_native_sam3: bool | None = None,
     registry: dict | None = None,
     sam3_checkpoint: str | None = None,
+    sam3_checkpoint_override: str | None = None,
 ) -> tuple[Any | None, str]:
     """Unified segmentation cascade helper for adapter layer call sites.
 
@@ -927,19 +928,29 @@ def build_segmentation_cascade(
     policy="separate" (AtlasSegmentedSDXLInpaint):
       Native SAM3 (AtlasSAM3Mask, out(0)) -> SAM3Segment (third-party Triton/CUDA, out(1)).
       Returns (instances_ref, path_fired: str)
+
+    ``sam3_checkpoint`` / ``sam3_checkpoint_override`` select the core ComfyUI
+    SAM3 path (``core:auto`` or an exact file); both are forwarded verbatim to
+    the emitted AtlasSAM3Mask, which resolves them at RUN time (missing file
+    -> empty mask + report; any other core failure raises). The core path
+    needs neither transformers nor ``[sam3]``, so it counts as native here.
     """
-    from atlas_camera.comfy.sam3_core_backend import HF_BACKEND, is_core_checkpoint
-    core = is_core_checkpoint(sam3_checkpoint)
+    from atlas_camera.comfy.sam3_core_backend import HF_BACKEND, wants_core
+    override = (sam3_checkpoint_override or "").strip()
+    core = wants_core(sam3_checkpoint, override)
     if have_native_sam3 is None:
         have_native_sam3 = _native_sam3_available()
     # A core ComfyUI SAM3 checkpoint needs neither transformers nor [sam3].
     have_native_sam3 = bool(have_native_sam3 or core)
-    sam3_extra = {"sam3_checkpoint": str(sam3_checkpoint)} if core else {}
-    sam3_label = (f"AtlasSAM3Mask (core {sam3_checkpoint})" if core
+    sam3_extra: dict[str, str] = {}
+    if core:
+        sam3_extra["sam3_checkpoint"] = str(sam3_checkpoint or HF_BACKEND)
+        if override:
+            sam3_extra["sam3_checkpoint_override"] = override
+    sam3_label = (f"AtlasSAM3Mask (core {override or sam3_checkpoint})" if core
                   else "AtlasSAM3Mask (native)")
     if registry is None:
         registry = _comfy_registry()
-    _ = HF_BACKEND
 
     if policy == "separate":
         if have_native_sam3:

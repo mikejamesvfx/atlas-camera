@@ -1446,8 +1446,18 @@ class AtlasInput:
                 "sam3_checkpoint": (_sam3_checkpoint_choices(), {
                     "default": "hf:facebook/sam3",
                     "tooltip": "SAM3 for the sky/scope masks. hf:facebook/sam3 = transformers "
-                               "+ gated HF repo. A *sam3* checkpoint (sam3.1_multiplex_fp16) = "
-                               "ComfyUI's core SAM3: no HF login, no [sam3] extra."}),
+                               "+ gated HF repo. core:auto = ComfyUI's core SAM3 on the first "
+                               "*sam3* file in models/checkpoints, sorted "
+                               "(sam3.1_multiplex_fp16): no HF login, no [sam3] extra."}),
+                # APPENDED 2026-10-03 (positional rule): an exact core SAM3 file.
+                # STRING, not combo (F-8): the combo values are fixed so a saved
+                # graph validates on any machine; a missing file degrades to an
+                # EMPTY sky/scope mask with the file named in the report.
+                "sam3_checkpoint_override": ("STRING", {"default": "",
+                    "tooltip": "Exact core SAM3 checkpoint in models/checkpoints (e.g. "
+                               "sam3.1_multiplex_fp16.safetensors). Non-empty = core SAM3 "
+                               "with THIS file. Missing -> sky/scope masks empty, report "
+                               "names the file."}),
             },
         }
 
@@ -1466,7 +1476,8 @@ class AtlasInput:
               sky_sdxl_seed=0,
               retopo_method="off", retopo_target_vertex_count=2000,
               boundary_smooth_iterations=0, sub_quad_boundary=False,
-              raw_meta=None, sam3_checkpoint="hf:facebook/sam3", **_extra):
+              raw_meta=None, sam3_checkpoint="hf:facebook/sam3",
+              sam3_checkpoint_override="", **_extra):
 
         registry = _comfy_registry()
         # Native SAM3 (AtlasSAM3Mask, transformers>=5.5.4, no triton) fully
@@ -1475,14 +1486,36 @@ class AtlasInput:
         # preferring the triton-locked node is better. AtlasSemanticMask
         # (SegFormer/ADE20K, [neural], no triton) remains the learned fallback
         # for transformers<5.5.4 / [sam3] not installed.
-        from atlas_camera.comfy.sam3_core_backend import is_core_checkpoint
-        have_native_sam3 = (_native_sam3_available()
-                            or is_core_checkpoint(sam3_checkpoint))
+        from atlas_camera.comfy.sam3_core_backend import (
+            CORE_AUTO, Sam3CheckpointMissing, resolve_core_checkpoint, wants_core)
+        core_sam3 = wants_core(sam3_checkpoint, sam3_checkpoint_override)
+        have_native_sam3 = _native_sam3_available() or core_sam3
         have_semantic = "AtlasSemanticMask" in registry
         have_inpaint = ("INPAINT_InpaintWithModel" in registry
                         and "INPAINT_LoadInpaintModel" in registry
                         and "INPAINT_ExpandMask" in registry)
         notes: list = []
+
+        # Core SAM3 is resolved HERE as well as in the emitted AtlasSAM3Mask,
+        # so a missing file is visible in THIS report (the child's report is
+        # not surfaced) and no sky card is built on a guaranteed-empty mask.
+        # The cascade has no runtime fallback (build_segmentation_cascade), so
+        # only "missing" degrades; a load error raises from the child node.
+        core_sam3_missing = ""
+        if core_sam3:
+            try:
+                core_name = resolve_core_checkpoint(sam3_checkpoint,
+                                                    sam3_checkpoint_override)
+                label = (f"{CORE_AUTO} -> {core_name}"
+                         if not (sam3_checkpoint_override or "").strip()
+                         and str(sam3_checkpoint) == CORE_AUTO else core_name)
+                notes.append(f"sky/scope segmenter: core SAM3 {label}")
+            except Sam3CheckpointMissing as exc:
+                core_sam3_missing = str(exc)
+                notes.append(f"core SAM3 checkpoint MISSING — {exc}; sky/scope "
+                             f"masks are EMPTY")
+        no_segmenter = ("core SAM3 checkpoint missing" if core_sam3_missing
+                        else "no segmenter (native SAM3 / AtlasSemanticMask absent)")
 
         if is_moge_model(str(depth_model)) and not _moge_available():
             notes.append("MoGe package not installed — AtlasDepthMap will fail; "
@@ -1491,10 +1524,13 @@ class AtlasInput:
 
         def segment(image_ref, prompt_value):
             """Text-prompt segmentation via centralized build_segmentation_cascade."""
+            if core_sam3_missing:
+                return None
             mask_ref, _ = build_segmentation_cascade(
                 g, image_ref, prompt_value, policy="semantic",
                 have_native_sam3=have_native_sam3, registry=registry,
                 sam3_checkpoint=sam3_checkpoint,
+                sam3_checkpoint_override=sam3_checkpoint_override,
             )
             return mask_ref
 
@@ -1550,7 +1586,7 @@ class AtlasInput:
 
             sky_mask = segment(image_ref, sky_prompt_ref)
             if sky_mask is None:
-                notes.append("sky SKIPPED — no segmenter (native SAM3 / AtlasSemanticMask absent)")
+                notes.append(f"sky SKIPPED — {no_segmenter}")
                 sky_on = False
             else:
                 sky_mask_ref = sky_mask
@@ -1676,7 +1712,7 @@ class AtlasInput:
                     seg_ref = segment(image_ref, p_ref)
                     if seg_ref is None:
                         if prompt_val:
-                            notes.append(f"{name} scope SKIPPED — no segmenter (native SAM3 / AtlasSemanticMask absent)")
+                            notes.append(f"{name} scope SKIPPED — {no_segmenter}")
                     else:
                         scope = g.node("AtlasScopeMask",
                                        sky_mask=(sky_mask_ref if sky_on else zero_mask.out(0)),

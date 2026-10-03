@@ -391,9 +391,10 @@ def test_retopo_widgets_appended_last_with_combo_subset():
     start = widget_names.index(trio[0])
     assert widget_names[start:start + 3] == trio
     # sub_quad_boundary followed the trio (2026-08-10), then sam3_checkpoint
-    # (2026-10-02); both are appended after it, never inserted before.
+    # (2026-10-02) and sam3_checkpoint_override (2026-10-03); all appended
+    # after it, never inserted before.
     assert widget_names.index("sub_quad_boundary") > start + 2
-    assert widget_names[-1] == "sam3_checkpoint"
+    assert widget_names[-2:] == ["sam3_checkpoint", "sam3_checkpoint_override"]
     assert it["sub_quad_boundary"][1]["default"] is False
     assert it["retopo_method"][0] == ["off", "quad", "decimate", "voxel_remesh"]
     assert it["retopo_method"][1]["default"] == "off"
@@ -522,3 +523,96 @@ def test_raw_meta_is_a_link_input_not_a_widget():
     entry = spec["optional"]["raw_meta"]
     assert entry[0] == "ATLAS_RAW_META"
     assert len(entry) == 1 or not isinstance(entry[1], dict) or "default" not in entry[1]
+
+
+# ---------------------------------------------------------------------------
+# R3 / D5: AtlasInput's contract when core SAM3 fails (F-6 item 6). The
+# cascade has NO runtime fallback (build_segmentation_cascade), so the two
+# core failure kinds must behave distinctly and visibly:
+#   missing checkpoint -> AtlasInput completes, sky mask empty, report names it
+#   load error         -> the run raises, naming the checkpoint
+# ---------------------------------------------------------------------------
+
+import sys  # noqa: E402
+import types  # noqa: E402
+
+from atlas_camera.comfy import sam3_core_backend as sam3_backend  # noqa: E402
+
+
+@pytest.fixture()
+def fake_core_sam3(monkeypatch):
+    """Stub ComfyUI's folder_paths / comfy.sd / SAM3_Detect. Yields the
+    mutable checkpoint listing and a dict whose 'load' entry is the loader."""
+    listing = ["sam3.1_multiplex_fp16.safetensors"]
+    state = {"load": lambda path, **kw: ("MODEL", object(), None, None)}
+    fp = types.ModuleType("folder_paths")
+    fp.get_filename_list = lambda kind: list(listing)
+    fp.get_full_path_or_raise = lambda kind, name: f"/models/{kind}/{name}"
+    fp.get_folder_paths = lambda kind: []
+    sd = types.ModuleType("comfy.sd")
+    sd.load_checkpoint_guess_config = lambda path, **kw: state["load"](path, **kw)
+    comfy_pkg = types.ModuleType("comfy")
+    comfy_pkg.sd = sd
+    nodes_sam3 = types.ModuleType("comfy_extras.nodes_sam3")
+    nodes_sam3.SAM3_Detect = object
+    for name, mod in {"folder_paths": fp, "comfy": comfy_pkg, "comfy.sd": sd,
+                      "comfy_extras": types.ModuleType("comfy_extras"),
+                      "comfy_extras.nodes_sam3": nodes_sam3}.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+    monkeypatch.delitem(sys.modules, "comfy.model_management", raising=False)
+    sam3_backend._LOADED.clear()
+    yield listing, state
+    sam3_backend._LOADED.clear()
+
+
+def test_core_sam3_missing_checkpoint_completes_with_empty_sky_mask(
+        monkeypatch, fake_core_sam3):
+    listing, _ = fake_core_sam3
+    listing.clear()                       # this machine lacks the file
+    graph, result = _expand(monkeypatch, sky=True, layers=2, scope_prompts="rocks",
+                            sam3_checkpoint="hf:facebook/sam3",
+                            sam3_checkpoint_override="sam3.1_multiplex_fp16.safetensors")
+    report = result[4]
+    assert "MISSING" in report and "sam3.1_multiplex_fp16.safetensors" in report
+    assert "sky SKIPPED" in report and "core SAM3 checkpoint missing" in report
+    # no SAM3 run, no SegFormer substitute, no sky card on an empty mask
+    assert not any(n["class_type"] in ("AtlasSAM3Mask", "AtlasSemanticMask",
+                                       "AtlasSkyDomeLayer") for n in graph.values())
+    solid_id = next(i for i, n in graph.items() if n["class_type"] == "SolidMask")
+    assert result[3] == [solid_id, 0]
+    assert graph[solid_id]["inputs"]["value"] == 0.0
+
+
+def test_core_sam3_auto_with_no_file_names_core_auto(monkeypatch, fake_core_sam3):
+    listing, _ = fake_core_sam3
+    listing[:] = ["sdxl.safetensors"]
+    _, result = _expand(monkeypatch, sky=True, sam3_checkpoint="core:auto")
+    assert "MISSING" in result[4] and "core:auto" in result[4]
+
+
+def test_core_sam3_auto_names_the_chosen_file(monkeypatch, fake_core_sam3):
+    listing, _ = fake_core_sam3
+    listing[:] = ["z_sam3.safetensors", "a_sam3.safetensors"]
+    graph, result = _expand(monkeypatch, sky=True, sam3_checkpoint="core:auto")
+    assert "core:auto -> a_sam3.safetensors" in result[4]
+    sam = next(n for n in graph.values() if n["class_type"] == "AtlasSAM3Mask")
+    assert sam["inputs"]["sam3_checkpoint"] == "core:auto"
+
+
+def test_core_sam3_load_error_raises_naming_the_checkpoint(monkeypatch, fake_core_sam3):
+    _, state = fake_core_sam3
+
+    def corrupt(path, **kw):
+        raise ValueError("header too large")
+    state["load"] = corrupt
+    graph, result = _expand(monkeypatch, sky=True, sam3_checkpoint="core:auto")
+    assert "MISSING" not in result[4]
+    # The expansion builds; the emitted AtlasSAM3Mask is what runs SAM3, and it
+    # must RAISE (failing the AtlasInput run) rather than hand the sky card an
+    # empty mask.
+    from atlas_camera.comfy.nodes_inpaint import AtlasSAM3Mask
+    sam = next(n for n in graph.values() if n["class_type"] == "AtlasSAM3Mask")
+    inputs = dict(sam["inputs"], image=torch.rand(1, 16, 24, 3))
+    with pytest.raises(RuntimeError,
+                       match=r"sam3\.1_multiplex_fp16\.safetensors.*header too large"):
+        AtlasSAM3Mask().segment(**inputs)

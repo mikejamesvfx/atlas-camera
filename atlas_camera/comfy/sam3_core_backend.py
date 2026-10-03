@@ -27,30 +27,102 @@ from typing import Any
 #: workflow keeps its behaviour.
 HF_BACKEND = "hf:facebook/sam3"
 
+#: The core-ComfyUI path with no file named: the FIRST of the sorted ``*sam3*``
+#: checkpoints (``sam3d`` excluded). Deterministic, and the chosen file is
+#: named in the node report.
+CORE_AUTO = "core:auto"
+
+#: The FIXED combo values (F-8 / D30). They used to be read from disk, so a
+#: graph saved on one machine failed validation on another that lacked the
+#: same file. An exact file now goes in the ``sam3_checkpoint_override``
+#: STRING (ComfyUI rejects STRING->combo links, the ``*_override`` pattern).
+#: Saved-workflow contract: APPEND-ONLY from here on.
+SAM3_CHECKPOINT_CHOICES: tuple[str, ...] = (HF_BACKEND, CORE_AUTO)
+
 #: Upper bound on detections per concept for the ``concept:N`` prompt.
 DEFAULT_MAX_PER_CONCEPT = 64
 
+#: One SAM3 at a time: {ckpt_name: (model_patcher, clip)}. Released by
+#: :func:`release_sam3` -- on a checkpoint switch, explicitly, and on
+#: ComfyUI's own unload (see :func:`_install_unload_hook`).
 _LOADED: dict[str, tuple[Any, Any]] = {}
+
+_UNLOAD_HOOK_ATTR = "_atlas_sam3_release_hooked"
+
+
+class Sam3CheckpointMissing(LookupError):
+    """The requested core SAM3 checkpoint is not on disk.
+
+    The ONE core-path failure that degrades to an empty mask + report (like
+    the HF path's gated repo): it is a per-machine install gap, not a broken
+    graph. Every other core failure raises, naming the checkpoint.
+    """
 
 
 def sam3_checkpoint_choices() -> list[str]:
-    """Combo values: the HF default, then every SAM3 file in ``checkpoints``.
+    """The fixed combo values: ``["hf:facebook/sam3", "core:auto"]``."""
+    return list(SAM3_CHECKPOINT_CHOICES)
 
-    Outside ComfyUI (tests, CLI) ``folder_paths`` is absent and only the HF
-    default is offered.
-    """
-    names: list[str] = []
+
+def _all_checkpoints() -> list[str]:
+    """Every file in ComfyUI's ``checkpoints`` folder; [] outside ComfyUI."""
     try:
         import folder_paths  # type: ignore[import-not-found]
-        names = [n for n in folder_paths.get_filename_list("checkpoints")
-                 if "sam3" in n.lower() and "sam3d" not in n.lower()]
+        return list(folder_paths.get_filename_list("checkpoints"))
     except Exception:  # noqa: BLE001 - not inside ComfyUI
-        names = []
-    return [HF_BACKEND, *sorted(names)]
+        return []
 
 
-def is_core_checkpoint(choice: str | None) -> bool:
+def core_sam3_checkpoints() -> list[str]:
+    """Sorted ``*sam3*`` checkpoints (``sam3d`` excluded) -- core:auto's pool."""
+    return sorted(n for n in _all_checkpoints()
+                  if "sam3" in n.lower() and "sam3d" not in n.lower())
+
+
+def wants_core(choice: str | None, override: str | None = None) -> bool:
+    """True when the core ComfyUI SAM3 path is requested.
+
+    A non-empty override always selects core (it names a core file); otherwise
+    any combo value other than the HF default does.
+    """
+    if (override or "").strip():
+        return True
     return bool(choice) and str(choice) != HF_BACKEND
+
+
+#: Back-compat name for :func:`wants_core`.
+is_core_checkpoint = wants_core
+
+
+def resolve_core_checkpoint(choice: str | None, override: str | None = None) -> str:
+    """The exact checkpoint file the core path will load.
+
+    * non-empty ``override`` -> that exact file (path separators normalised);
+    * ``core:auto`` -> the first sorted ``*sam3*`` checkpoint;
+    * any other non-HF value (programmatic callers) -> that exact file.
+
+    Raises :class:`Sam3CheckpointMissing` naming what was looked for.
+    """
+    ov = (override or "").strip()
+    if ov:
+        names = _all_checkpoints()
+        want = ov.replace("\\", "/")
+        for n in names:
+            if n == ov or n.replace("\\", "/") == want:
+                return n
+        raise Sam3CheckpointMissing(
+            f"sam3_checkpoint_override '{ov}' not found in models/checkpoints")
+    if str(choice) == CORE_AUTO:
+        pool = core_sam3_checkpoints()
+        if not pool:
+            raise Sam3CheckpointMissing(
+                "core:auto found no *sam3* checkpoint in models/checkpoints "
+                "(e.g. sam3.1_multiplex_fp16.safetensors; sam3d files excluded)")
+        return pool[0]
+    name = str(choice)
+    if name in _all_checkpoints():
+        return name
+    raise Sam3CheckpointMissing(f"core SAM3 checkpoint '{name}' not found in models/checkpoints")
 
 
 def core_sam3_available() -> bool:
@@ -59,12 +131,58 @@ def core_sam3_available() -> bool:
         import comfy_extras.nodes_sam3  # type: ignore[import-not-found]  # noqa: F401
     except Exception:  # noqa: BLE001
         return False
-    return len(sam3_checkpoint_choices()) > 1
+    return bool(core_sam3_checkpoints())
+
+
+def release_sam3() -> bool:
+    """Drop the cached SAM3 model + text encoder. True if one was held.
+
+    The cache holds the ONLY strong reference to the ModelPatcher once the
+    node returns (ComfyUI's ``current_loaded_models`` holds it weakly), so
+    clearing it lets the weights be collected.
+    """
+    held = bool(_LOADED)
+    _LOADED.clear()
+    return held
+
+
+def _install_unload_hook() -> bool:
+    """Chain :func:`release_sam3` onto ``comfy.model_management.unload_all_models``.
+
+    ComfyUI has no unload-callback registry (checked against V135:
+    ``model_management`` keeps only WEAK refs in ``current_loaded_models``,
+    and RAM is freed by dropping the execution cache). Every "unload" path --
+    the ``/free`` endpoint (``unload_models`` / ``free_memory``), the OOM
+    handler, ``--disable-smart-memory`` -- goes through ``unload_all_models``
+    via the module attribute, so wrapping that attribute is the one hook that
+    sees them all. Idempotent; a no-op (False) outside ComfyUI.
+    """
+    try:
+        import comfy.model_management as mm  # type: ignore[import-not-found]
+    except Exception:  # noqa: BLE001 - not inside ComfyUI
+        return False
+    current = getattr(mm, "unload_all_models", None)
+    if current is None:
+        return False
+    if getattr(current, _UNLOAD_HOOK_ATTR, False):
+        return True
+
+    def unload_all_models(*args, **kwargs):
+        release_sam3()
+        return current(*args, **kwargs)
+
+    setattr(unload_all_models, _UNLOAD_HOOK_ATTR, True)
+    unload_all_models.__wrapped__ = current  # type: ignore[attr-defined]
+    mm.unload_all_models = unload_all_models
+    return True
 
 
 def _load(ckpt_name: str) -> tuple[Any, Any]:
     if ckpt_name in _LOADED:
         return _LOADED[ckpt_name]
+    # One SAM3 at a time: a different checkpoint releases the first BEFORE
+    # loading, so two copies are never resident together.
+    release_sam3()
     import comfy.sd  # type: ignore[import-not-found]
     import folder_paths  # type: ignore[import-not-found]
 
@@ -75,9 +193,7 @@ def _load(ckpt_name: str) -> tuple[Any, Any]:
     model, clip = out[0], out[1]
     if model is None or clip is None:
         raise RuntimeError(f"{ckpt_name} did not load as a SAM3 model + text encoder")
-    # One SAM3 at a time: a second checkpoint replaces the first rather than
-    # pinning two copies (ComfyUI's model management still owns VRAM).
-    _LOADED.clear()
+    _install_unload_hook()
     _LOADED[ckpt_name] = (model, clip)
     return model, clip
 

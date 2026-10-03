@@ -358,6 +358,14 @@
           "widget": {
             "name": "sam3_checkpoint"
           }
+        },
+        {
+          "name": "sam3_checkpoint_override",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint_override"
+          }
         }
       ],
       "outputs": [
@@ -438,7 +446,8 @@
         2000,
         8,
         true,
-        "hf:facebook/sam3"
+        "hf:facebook/sam3",
+        ""
       ],
       "title": "2 · SOLVE + RELIEF"
     },

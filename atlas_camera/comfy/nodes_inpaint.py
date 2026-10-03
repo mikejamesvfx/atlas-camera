@@ -278,6 +278,12 @@ class AtlasSemanticMask:
         return (mask, report)
 
 
+def _is_oom(exc: BaseException) -> bool:
+    """Torch/accelerator out-of-memory, by name (no torch import needed)."""
+    return (type(exc).__name__ == "OutOfMemoryError"
+            or "out of memory" in str(exc).lower())
+
+
 def _sam3_checkpoint_choices():
     from atlas_camera.comfy.sam3_core_backend import sam3_checkpoint_choices
     return sam3_checkpoint_choices()
@@ -357,26 +363,38 @@ class AtlasSAM3Mask:
                 # ComfyUI's OWN model stack from a checkpoint (Comfy-Org's
                 # sam3.1_multiplex_fp16) instead of the gated HF repo. The HF
                 # value stays first and default, so saved graphs are unchanged.
+                # Values are FIXED (F-8): a disk-listed combo failed validation
+                # on any machine without the same file. Append-only from here.
                 "sam3_checkpoint": (_sam3_checkpoint_choices(), {
                     "default": _SAM3_HF_BACKEND,
                     "tooltip": "hf:facebook/sam3 = transformers + gated Hugging Face repo "
-                               "(the original path). Any *sam3* file in models/checkpoints "
-                               "(e.g. sam3.1_multiplex_fp16) = ComfyUI's core SAM3 "
-                               "(SAM3_Detect): no HF login, no [sam3] extra. `device` "
-                               "is ignored on that path (ComfyUI manages it)."}),
+                               "(the original path). core:auto = ComfyUI's core SAM3 "
+                               "(SAM3_Detect) on the first *sam3* file in "
+                               "models/checkpoints, sorted (e.g. sam3.1_multiplex_fp16): "
+                               "no HF login, no [sam3] extra. `device` is ignored on "
+                               "that path (ComfyUI manages it)."}),
+                # APPENDED 2026-10-03 (positional rule): an exact core checkpoint
+                # file. A STRING, not a combo, so it can be linked and a saved
+                # graph never fails validation for a file another machine lacks.
+                "sam3_checkpoint_override": ("STRING", {"default": "",
+                    "tooltip": "Exact core SAM3 checkpoint file in models/checkpoints "
+                               "(e.g. sam3.1_multiplex_fp16.safetensors). Non-empty = "
+                               "core path with THIS file, whatever sam3_checkpoint says. "
+                               "Missing file -> empty mask + report naming it."}),
             },
         }
 
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
                 output_mode="merged", max_instances=0, concepts_extra="",
-                sam3_checkpoint=None, **_extra):
+                sam3_checkpoint=None, sam3_checkpoint_override="", **_extra):
         extra = (concepts_extra or "").strip()
         if extra:
             concepts = f"{concepts}, {extra}" if (concepts or "").strip() else extra
-        from atlas_camera.comfy.sam3_core_backend import is_core_checkpoint
-        if is_core_checkpoint(sam3_checkpoint):
+        from atlas_camera.comfy.sam3_core_backend import wants_core
+        if wants_core(sam3_checkpoint, sam3_checkpoint_override):
             return self._segment_core(image, concepts, confidence_threshold,
-                                      output_mode, max_instances, str(sam3_checkpoint))
+                                      output_mode, max_instances, sam3_checkpoint,
+                                      sam3_checkpoint_override)
         from atlas_camera.inference.sam3_segmenter import (
             DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
             sam3_instance_masks)
@@ -420,20 +438,45 @@ class AtlasSAM3Mask:
         return (mask, report)
 
     def _segment_core(self, image, concepts, confidence_threshold, output_mode,
-                      max_instances, ckpt_name):
-        """Same outputs and report shape as the HF path, via core SAM3_Detect."""
+                      max_instances, choice, override=""):
+        """Same outputs and report shape as the HF path, via core SAM3_Detect.
+
+        Failure contract (F-6 item 6, mirrors the HF path): a MISSING
+        checkpoint is a per-machine install gap -> empty mask + a report
+        naming the file (as the HF gated repo is). ANY other failure -- load
+        error, OOM, core API drift -- RAISES with the checkpoint named, never
+        a silent empty mask that a downstream sky card would build on.
+        """
         import numpy as np
 
-        from atlas_camera.comfy.sam3_core_backend import core_sam3_instances
+        from atlas_camera.comfy.sam3_core_backend import (
+            CORE_AUTO, Sam3CheckpointMissing, core_sam3_instances,
+            resolve_core_checkpoint)
         torch = _require_torch()
         h, w = int(image.shape[1]), int(image.shape[2])
         empty = torch.zeros((1, h, w), dtype=torch.float32)
         try:
+            ckpt_name = resolve_core_checkpoint(choice, override)
+        except Sam3CheckpointMissing as exc:
+            return (empty, f"core SAM3 checkpoint MISSING — {exc}. Mask is empty; "
+                           f"put the file in models/checkpoints or use hf:facebook/sam3.")
+        label = (f"{CORE_AUTO} -> {ckpt_name}"
+                 if not (override or "").strip() and str(choice) == CORE_AUTO
+                 else ckpt_name)
+        try:
             instances, matched = core_sam3_instances(
                 image, concepts, ckpt_name=ckpt_name,
                 confidence_threshold=float(confidence_threshold))
-        except Exception as exc:  # noqa: BLE001 - report, never break the graph
-            return (empty, f"core SAM3 ({ckpt_name}) FAILED — {type(exc).__name__}: {exc}")
+        except Exception as exc:
+            msg = f"core SAM3 ({ckpt_name}) FAILED — {type(exc).__name__}: {exc}"
+            if _is_oom(exc):
+                # Keep the OOM's type so ComfyUI's handler still recognises it
+                # (and unloads models); name the checkpoint as a note.
+                if hasattr(exc, "add_note"):   # py>=3.11
+                    exc.add_note(msg)
+                raise
+            raise RuntimeError(msg) from exc
+        ckpt_name = label
         if not instances:
             return (empty, f"NO MATCH for '{concepts}' — mask is empty ({ckpt_name}).")
         if str(output_mode) == "separate":
