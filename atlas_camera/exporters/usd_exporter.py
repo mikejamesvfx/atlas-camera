@@ -59,6 +59,31 @@ def _gf_mat4(world_mat: Any, Gf: Any) -> Any:
     return Gf.Matrix4d(*row_vector_flat(world_mat))
 
 
+def _sdf_identifier(name: Any, fallback: str) -> str:
+    """A valid Sdf prim identifier: ``[A-Za-z_][A-Za-z0-9_]*``.
+
+    Pure Python (mirrors ``Tf.MakeValidIdentifier``): every invalid character
+    becomes ``_``, a leading digit gets a ``_`` prefix, empty -> ``fallback``.
+    """
+    import re
+    ident = re.sub(r"[^A-Za-z0-9_]", "_", str(name or "").strip())
+    if not ident.strip("_"):
+        ident = fallback
+    if ident[0].isdigit():
+        ident = "_" + ident
+    return ident
+
+
+def _unique_prim_name(name: Any, fallback: str, used: set[str]) -> str:
+    """:func:`_sdf_identifier`, suffixed ``_2``, ``_3`` ... until unused."""
+    base = _sdf_identifier(name, fallback)
+    out, n = base, 2
+    while out in used:
+        out, n = f"{base}_{n}", n + 1
+    used.add(out)
+    return out
+
+
 def _define_ground_plane(stage: Any, path: str, Gf: Any, Sdf: Any, UsdGeom: Any, Vt: Any) -> Any:
     """Define a 40×40 m quad mesh at Y=0 in the XZ plane with flat `st` UV primvar.
 
@@ -261,8 +286,12 @@ class USDExporter:
 
         _define_ground_plane(stage, "/AtlasProjectionScene/atlas_projection_plane", Gf, Sdf, UsdGeom, Vt)
 
+        # Prim names are sanitised to valid Sdf identifiers and made unique:
+        # two generated imports both named "object" must give two prims, not
+        # one prim defined twice (the second silently overwriting the first).
+        used_names = {"atlas_projection_plane"}
         for index, primitive in enumerate(solve.projection_scene.proxy_geometry):
-            prim_name = (primitive.name or f"proxy_{index}").replace(" ", "_").replace("-", "_")
+            prim_name = _unique_prim_name(primitive.name, f"proxy_{index}", used_names)
             prim_path = f"/AtlasProjectionScene/{prim_name}"
             meta = primitive.metadata or {}
             if primitive.primitive_type == "plane":
