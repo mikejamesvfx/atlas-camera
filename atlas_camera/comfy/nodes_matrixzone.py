@@ -201,8 +201,15 @@ class AtlasMatrixZoneStitch:
         plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
             plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
 
-        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix)
-        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path)
+        from atlas_camera.core.matrixzone import seam_step_test
+        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+        params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
+                                    detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
+                                    local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
+        exr_path, exr_note = _write_plate_exr(np, plate, colorspace, filename_prefix,
+                                              params=params, step_mem=step_mem)
+        step, delivered, diff_note = _score_seams(np, plate, plan, sdr_lin, exr_path,
+                                                  step_mem=step_mem)
 
         report = _stitch_report(
             np, plate, rep, step, n_zones=n_zones, mode=mode, colorspace=colorspace,
@@ -297,8 +304,78 @@ def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
     return plate, stripe_rep, local_rep, xfer_rep
 
 
-def _write_plate_exr(np, plate, colorspace, filename_prefix):
+def _provenance_params(handle, rep, *, anchor, destripe, detail_from_sdr, sdr_wired,
+                       local_rep, xfer_rep, stripe_rep):
+    """Everything needed to say how this plate was made (EXR ``atlas:matrixzone_params``).
+
+    Booleans record what RAN, not just the widget: destripe with no sdr_plate
+    is ``false`` here, with the widget value beside it.
+    """
+    from atlas_camera.core.matrixzone import (
+        DESTRIPE_SDR_CLIP,
+        SDR_TRANSFER_CLIP,
+        SDR_TRANSFER_EPS,
+        SDR_TRANSFER_RADIUS,
+    )
+    plan = handle["plan"]
+    zw, zh = plan["zone_size"]
+    long_edge = max(zw, zh)
+    tier = "1080p" if long_edge <= 2048 else "4K" if long_edge <= 4096 else "8K"
+    return {
+        "schema": "atlasMatrixZoneParams/1",
+        "grid": list(plan["grid"]), "zone_size": [zw, zh], "zone_tier": tier,
+        "render": [plan["render"]["width"], plan["render"]["height"]],
+        "plate": [plan["plate"]["width"], plan["plate"]["height"]],
+        "mode": handle["mode"], "clip_frames": handle.get("clip_frames"),
+        "overlap_px": list(plan["overlap"]["px"]),
+        "anchor": bool(rep.get("anchored")), "anchor_widget": bool(anchor),
+        "split_px": rep.get("split_px"),
+        "sdr_plate": bool(sdr_wired),
+        "destripe": stripe_rep is not None, "destripe_widget": bool(destripe),
+        "destripe_iterations": None if stripe_rep is None else stripe_rep.get("iterations"),
+        "destripe_window_px": None if stripe_rep is None else stripe_rep.get("window_px"),
+        "destripe_sdr_clip": DESTRIPE_SDR_CLIP,
+        "destripe_local": local_rep is not None,
+        "detail_from_sdr": xfer_rep is not None, "detail_from_sdr_widget": bool(detail_from_sdr),
+        "sdr_clip_window": list(SDR_TRANSFER_CLIP),
+        "guided_radius_px": SDR_TRANSFER_RADIUS if xfer_rep is None else xfer_rep["radius_px"],
+        "guided_eps": SDR_TRANSFER_EPS if xfer_rep is None else xfer_rep["eps"],
+    }
+
+
+def _atlas_version():
+    try:
+        import atlas_camera
+        return str(atlas_camera.__version__)
+    except Exception:  # noqa: BLE001 - provenance must never fail the write
+        try:
+            from importlib.metadata import version
+            return version("atlas-camera")
+        except Exception:  # noqa: BLE001
+            return "unknown"
+
+
+def _seam_worst_attr(step_mem):
+    """JSON for ``atlas:seam_worst``: the in-memory score (the EXR cannot carry
+    a score of itself; the report has the delivered one)."""
+    import json
+    w = step_mem.get("worst") if step_mem else None
+    if not w:
+        return json.dumps({"seam": None, "pass": step_mem.get("pass") if step_mem else None})
+    return json.dumps({"seam": w["seam"], "ratio": round(float(w["ratio"]), 4),
+                       "step_stops": round(float(w["step_stops"]), 5),
+                       "window": w.get("worst_window"), "pass": step_mem["pass"],
+                       "sdr_controlled": step_mem["sdr_controlled"],
+                       "window_px": step_mem.get("window_px"),
+                       "scored_on": "in-memory plate before half/DWAB encode"})
+
+
+def _write_plate_exr(np, plate, colorspace, filename_prefix, *, params=None, step_mem=None):
     """``(exr_path, note)``; a failed write leaves the path empty and says why.
+
+    Provenance attributes: ``atlas:content`` (the model-reconstruction label),
+    ``atlas:matrixzone_params`` (JSON, see _provenance_params),
+    ``atlas:seam_worst`` (JSON) and ``atlas:version``.
 
     The output-path refusal (a prefix leaving the output dir) is NOT caught:
     it is a graph error, not a write failure (F-1). The note becomes report
@@ -309,16 +386,22 @@ def _write_plate_exr(np, plate, colorspace, filename_prefix):
     try:
         from atlas_camera.plate.oiio_io import write_exr
         folder.mkdir(parents=True, exist_ok=True)
-        write_exr(exr_path, plate.astype(np.float32), bit_depth="half",
-                  source_colorspace=colorspace,
-                  extra_attribs={"atlas:content": "matrixZone SDR->HDR model reconstruction"})
+        import json
+        attrs = {"atlas:content": "matrixZone SDR->HDR model reconstruction",
+                 "atlas:version": _atlas_version()}
+        if params is not None:
+            attrs["atlas:matrixzone_params"] = json.dumps(params, sort_keys=True)
+        if step_mem is not None:
+            attrs["atlas:seam_worst"] = _seam_worst_attr(step_mem)
+        write_exr(exr_path, plate.astype(np.float32, copy=False), bit_depth="half",
+                  source_colorspace=colorspace, extra_attribs=attrs)
     except Exception as exc:  # noqa: BLE001 - still return the preview + report
         exr_note = f"EXR NOT WRITTEN: {type(exc).__name__}: {exc}"
         exr_path = ""
     return exr_path, exr_note
 
 
-def _score_seams(np, plate, plan, sdr_lin, exr_path):
+def _score_seams(np, plate, plan, sdr_lin, exr_path, *, step_mem=None):
     """Seam step test on what SHIPS: ``(step, delivered, diff_note)``.
 
     Gate on the decoded EXR (half + lossy DWAB), not the float in memory.
@@ -327,7 +410,8 @@ def _score_seams(np, plate, plan, sdr_lin, exr_path):
     can be bisected from the report alone.
     """
     from atlas_camera.core.matrixzone import seam_step_test
-    step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
+    if step_mem is None:
+        step_mem = seam_step_test(plate, plan, sdr_linear=sdr_lin)
     step, delivered, diff_note = step_mem, None, ""
     if exr_path:
         try:
@@ -399,8 +483,14 @@ def _stitch_report(np, plate, rep, step, *, n_zones, mode, colorspace, exr_path,
     if rep.get("resized_zones"):
         lines.append(f"warning: {rep['resized_zones']} zone result(s) came back at a "
                      "different size and were resampled to their renderRect")
-    lines.append(f"range: max {float(plate.max()):.2f}, p99 "
-                 f"{float(np.percentile(plate, 99)):.3f} (linear); a MODEL RECONSTRUCTION "
+    finite = np.isfinite(plate)
+    bad = int(plate.size - finite.sum())
+    vals = plate[finite] if bad else plate
+    lines.append(f"range: max {float(vals.max()) if vals.size else float('nan'):.2f}, p99 "
+                 f"{float(np.percentile(vals, 99)) if vals.size else float('nan'):.3f} (linear, "
+                 + (f"{bad} NON-FINITE pixel value(s) excluded -- inspect the plate" if bad
+                    else "0 non-finite")
+                 + "); a MODEL RECONSTRUCTION "
                  "of highlight radiance from a display-referred plate, not photographed HDR")
     return "\n".join(lines)
 

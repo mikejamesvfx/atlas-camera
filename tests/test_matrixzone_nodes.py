@@ -146,3 +146,46 @@ def test_per_zone_clips_are_zero_copy_expanded_views():
         # what downstream consumers do (VAE encode: movedim, *2-1, .to()) works
         x = (c.movedim(-1, 1) * 2.0 - 1.0).to(torch.float16)
         assert x.stride(0) != 0 and x.shape[0] == 17          # materialised, own storage
+
+
+def test_exr_carries_provenance_attributes(monkeypatch, tmp_path):
+    oiio = pytest.importorskip("OpenImageIO", reason="OIIO not installed: no EXR to read back")
+    import json
+
+    import atlas_camera
+    _, _, (_, exr_path, report) = _run("per_zone_clip", monkeypatch, tmp_path)
+    assert exr_path, report
+    inp = oiio.ImageInput.open(exr_path)
+    try:
+        spec = inp.spec()
+        params = json.loads(spec.getattribute("atlas:matrixzone_params"))
+        worst = json.loads(spec.getattribute("atlas:seam_worst"))
+        version = spec.getattribute("atlas:version")
+        content = spec.getattribute("atlas:content")
+    finally:
+        inp.close()
+    assert params["grid"] == [2, 2] and params["mode"] == "per_zone_clip"
+    assert params["zone_tier"] == "1080p" and len(params["zone_size"]) == 2
+    assert params["anchor"] is True and params["split_px"] > 0 and params["clip_frames"] == 9
+    assert params["sdr_plate"] is False and params["destripe"] is False
+    assert params["destripe_widget"] is True and params["detail_from_sdr"] is False
+    assert params["guided_radius_px"] == 64 and params["guided_eps"] == pytest.approx(0.01)
+    assert params["sdr_clip_window"] == [0.85, 0.97] and params["overlap_px"]
+    assert worst["seam"].startswith("z") and worst["ratio"] >= 0
+    assert "in-memory" in worst["scored_on"]
+    assert version == atlas_camera.__version__
+    assert content == "matrixZone SDR->HDR model reconstruction"
+
+
+def test_range_line_counts_non_finite_pixels():
+    from atlas_camera.comfy.nodes_matrixzone import _stitch_report
+    plate = np.full((8, 8, 3), 0.5, np.float32)
+    plate[0, 0, 0], plate[1, 1, 1] = np.nan, np.inf
+    rep = {"seams_before": [], "anchored": False}
+    step = {"seams": [], "worst": None, "flagged": [], "pass": None}
+    text = _stitch_report(np, plate, rep, step, n_zones=1, mode="per_zone_clip",
+                          colorspace="ACEScg", exr_path="", exr_note="", delivered=None,
+                          diff_note="", stripe_rep=None, local_rep=None, xfer_rep=None,
+                          destripe=False, detail_from_sdr=False)
+    line = [ln for ln in text.splitlines() if ln.startswith("range:")][0]
+    assert "2 NON-FINITE pixel value(s)" in line and "max 0.50" in line
