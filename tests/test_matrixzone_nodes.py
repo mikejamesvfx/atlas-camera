@@ -69,3 +69,33 @@ def test_stitch_report_carries_the_seam_step_gate(monkeypatch, tmp_path):
     assert "48 px strips, worst of ~256 px windows, NOT SDR-controlled" in report
     assert ("seam step test (delivered EXR" in report) or ("seam step test (in-memory plate" in report)
     assert "pass <= 1.5x random-line p90" in report
+
+
+@pytest.mark.parametrize("size,grid", [((620, 1100), (2, 2)), ((577, 1001), (3, 2)),
+                                       ((333, 517), (1, 3)), ((720, 1280), (4, 4)),
+                                       ((401, 999), (2, 1))])
+def test_split_torch_pad_and_crop_match_core(size, grid):
+    # T10/R2: the node pads/crops in torch; core.pad_to_render/crop_zones is the
+    # reference the bridge parity pins test. Pin the two paths equal, exactly.
+    from atlas_camera.core.matrixzone import crop_zones, pad_to_render
+    h, w = size
+    rgb = np.random.default_rng(h * w).random((h, w, 3)).astype(np.float32)
+    clips, handle, _ = AtlasMatrixZoneSplit().split(torch.from_numpy(rgb)[None], grid[0], grid[1],
+                                                    64, "per_zone_clip", 1)
+    plan = handle["plan"]
+    render = pad_to_render(rgb, plan)
+    assert render.shape[:2] == (plan["render"]["height"], plan["render"]["width"])
+    ref = crop_zones(render, plan)
+    assert len(clips) == 1 + len(ref)
+    for clip, z in zip(clips[1:], ref):
+        assert clip.shape[0] == 1
+        np.testing.assert_array_equal(clip[0].numpy(), z)
+
+
+def test_split_uses_core_frames_8k1():
+    from atlas_camera.comfy import nodes_matrixzone
+    from atlas_camera.core.matrixzone import frames_8k1
+    assert not hasattr(nodes_matrixzone, "_frames_8k1")
+    for n in (1, 2, 8, 9, 10, 17, 97):
+        clips, handle, _ = AtlasMatrixZoneSplit().split(_plate(), 2, 2, 64, "per_zone_clip", n)
+        assert handle["clip_frames"] == frames_8k1(n) == len(clips[0])

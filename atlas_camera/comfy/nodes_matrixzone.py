@@ -26,11 +26,6 @@ from atlas_camera.comfy.node_helpers import _require_numpy, _require_torch, outp
 MODES = ("per_zone_clip", "zones_as_frames")
 
 
-def _frames_8k1(n: int) -> int:
-    from atlas_camera.core.matrixzone import frames_8k1
-    return frames_8k1(max(1, int(n)))
-
-
 class AtlasMatrixZoneSplit:
     """🔲 Split a plate into matrixZone crops (+ a global clip) for LTX SDR->HDR.
 
@@ -69,7 +64,7 @@ class AtlasMatrixZoneSplit:
     def split(self, image, grid_cols=2, grid_rows=2, overlap_min_px=64,
               mode="per_zone_clip", clip_frames=9):
         torch = _require_torch()
-        from atlas_camera.core.matrixzone import plan_still, zones_as_frames
+        from atlas_camera.core.matrixzone import frames_8k1, plan_still, zones_as_frames
 
         img = image[:1].float()
         _, h, w, _ = img.shape
@@ -82,7 +77,7 @@ class AtlasMatrixZoneSplit:
         render = chw.permute(0, 2, 3, 1)
         gw, gh = plan["global"]["size"]
         glob = torch.nn.functional.interpolate(chw, size=(gh, gw), mode="area").permute(0, 2, 3, 1)
-        n = _frames_8k1(clip_frames)
+        n = frames_8k1(max(1, int(clip_frames)))
         clips = [glob.repeat(n, 1, 1, 1)]
         zones = []
         for z in plan["zones"]:
