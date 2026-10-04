@@ -205,6 +205,99 @@ def test_node_writes_glb_and_returns_the_three_sockets(tmp_path, monkeypatch):
     assert "EXR scene_00001_primary.exr" in report and "NOT scene-referred" in report
 
 
+def _hdr_exr(path, w=W, h=H, value=6.0):
+    """A float ACEScg plate with radiance far above display white."""
+    from atlas_camera.plate.oiio_io import write_exr
+    px = np.full((h, w, 3), value, dtype=np.float32)
+    write_exr(str(path), px, bit_depth="half", source_colorspace="ACEScg")
+    return path
+
+
+def _exr_pixels(path):
+    import OpenImageIO as oiio
+    return oiio.ImageBuf(str(path)).get_pixels(oiio.FLOAT)
+
+
+def test_hdr_plate_replaces_the_primary_exr_only(tmp_path):
+    pytest.importorskip("OpenImageIO")
+    hdr = _hdr_exr(tmp_path / "hdr.exr")
+    out = tmp_path / "out"
+    _, sidecars, _ = build_scene_layers(_solve(), _primary(), exr_dir=out, exr_prefix="t",
+                                        primary_hdr_path=str(hdr))
+    by = {s["plate"]: s for s in sidecars}
+    assert by["primary"]["exr_origin"] == "hdr_plate" and by["primary"]["scene_referred"]
+    assert by["primary"]["exr_source"] == "hdr.exr"
+    assert _exr_pixels(out / "t_primary.exr")[..., 0].mean() == pytest.approx(6.0, rel=1e-3)
+    # the other layers keep their own (display) plates
+    assert by["clean_plate_geo"]["exr_origin"] == "linearised_display_plate"
+
+
+def test_a_wrong_size_hdr_plate_falls_back_and_says_so(tmp_path):
+    pytest.importorskip("OpenImageIO")
+    hdr = _hdr_exr(tmp_path / "small.exr", w=W // 2, h=H // 2)
+    _, sidecars, _ = build_scene_layers(_solve(), _primary(), exr_dir=tmp_path / "o",
+                                        exr_prefix="t", primary_hdr_path=str(hdr))
+    prim = next(s for s in sidecars if s["plate"] == "primary")
+    assert prim["exr_origin"] == "linearised_display_plate" and not prim["scene_referred"]
+    assert "NOT used" in prim["exr_note"] and f"{W // 2}x{H // 2}" in prim["exr_note"]
+
+
+def _node_export(tmp_path, monkeypatch, **kw):
+    torch = pytest.importorskip("torch")
+    from atlas_camera.comfy import nodes_object_mesh, nodes_scene3d
+
+    out = tmp_path / "output"
+    out.mkdir(exist_ok=True)
+    monkeypatch.setattr(nodes_scene3d, "output_paths", lambda prefix: (out, "scene_00001"))
+    monkeypatch.setattr(nodes_scene3d, "output_root", lambda: out)
+    monkeypatch.setattr(nodes_object_mesh, "_comfy_read_roots", lambda: [("output", out)])
+    return out, nodes_scene3d.AtlasSceneTo3D().export(_solve(), torch.rand(1, H, W, 3), **kw)
+
+
+def test_node_writes_the_hdr_plate_as_the_primary_exr(tmp_path, monkeypatch):
+    pytest.importorskip("OpenImageIO")
+    out = tmp_path / "output"
+    out.mkdir()
+    _hdr_exr(out / "hdr_plate_00001.exr")
+    out, res = _node_export(tmp_path, monkeypatch, hdr_plate_path="hdr_plate_00001.exr")
+    report = res["result"][4]
+    assert "EXR scene_00001_primary.exr" in report and "HDR plate hdr_plate_00001.exr" in report
+    assert _exr_pixels(out / "scene_00001_primary.exr").max() > 1.0
+    extras = [m.get("extras", {}) for m in read_glb_json(res["result"][3])["materials"]]
+    assert any(e.get("exr_origin") == "hdr_plate" for e in extras)
+
+
+@pytest.mark.parametrize("path,write_exr,needle", [
+    ("missing.exr", True, "not found"),
+    ("C:/elsewhere/hdr.exr" if __import__("os").name == "nt" else "/elsewhere/hdr.exr",
+     True, "refused"),
+    ("hdr.exr", False, "write_exr is off"),
+])
+def test_an_unusable_hdr_plate_is_a_visible_warning(tmp_path, monkeypatch, path, write_exr,
+                                                    needle):
+    pytest.importorskip("OpenImageIO")
+    monkeypatch.delenv("ATLAS_ALLOW_ABSOLUTE_READS", raising=False)
+    monkeypatch.delenv("ATLAS_PROJECT_ROOT", raising=False)
+    _, res = _node_export(tmp_path, monkeypatch, hdr_plate_path=path, write_exr=write_exr)
+    report = res["result"][4]
+    assert "WARNING: hdr_plate_path" in report and needle in report
+    assert "HDR plate" not in report.replace("hdr_plate_path", "")
+
+
+def test_hdr_plate_path_reruns_when_the_file_changes(tmp_path, monkeypatch):
+    pytest.importorskip("OpenImageIO")
+    from atlas_camera.comfy import nodes_object_mesh
+    from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
+
+    monkeypatch.setattr(nodes_object_mesh, "_comfy_read_roots", lambda: [("output", tmp_path)])
+    assert AtlasSceneTo3D.IS_CHANGED() == AtlasSceneTo3D.IS_CHANGED(hdr_plate_path="")
+    before = AtlasSceneTo3D.IS_CHANGED(hdr_plate_path="p.exr")      # missing
+    _hdr_exr(tmp_path / "p.exr")
+    appeared = AtlasSceneTo3D.IS_CHANGED(hdr_plate_path="p.exr")
+    _hdr_exr(tmp_path / "p.exr", value=9.0, w=W + 2)                # rewritten, new size
+    assert len({before, appeared, AtlasSceneTo3D.IS_CHANGED(hdr_plate_path="p.exr")}) == 3
+
+
 def _inflate_plan(monkeypatch, nbytes):
     """Pretend the planned GLB is ``nbytes`` (the pre-build size check)."""
     from atlas_camera.exporters import scene_glb

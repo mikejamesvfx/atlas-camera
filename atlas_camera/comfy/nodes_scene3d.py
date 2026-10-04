@@ -125,15 +125,37 @@ class AtlasSceneTo3D:
                     "tooltip": "Optional delivery project from AtlasProject: writes the "
                                "GLB + EXR/PLY sidecars + manifest together into the "
                                "shot's geo/ lane (supersedes filename_prefix's folder)."}),
+                # APPENDED: scene-referred primary. The primary EXR sidecar is
+                # otherwise the 8-bit plate linearised (display-referred, clipped);
+                # the matrixZone conversion of the SAME photo replaces it.
+                "hdr_plate_path": ("STRING", {
+                    "default": "",
+                    "tooltip": "Optional HDR plate EXR of the SAME photo (the matrixZone "
+                               "still workflow's ACEScg output, e.g. atlas/hdr_plate_00001.exr): "
+                               "written as the PRIMARY layer's EXR sidecar instead of the "
+                               "linearised display plate. Must match the source image's size. "
+                               "Relative to ComfyUI's output or input folder, or absolute "
+                               "inside them / $ATLAS_PROJECT_ROOT. The GLB's embedded texture "
+                               "stays the display PNG (glTF has no float textures). A TYPED path "
+                               "re-runs when the file changes; a LINKED one only when upstream "
+                               "does. Empty = no HDR plate."}),
             },
         }
 
+    @classmethod
+    def IS_CHANGED(cls, hdr_plate_path="", **_kwargs):
+        """Gate doctrine: the HDR EXR can be replaced at the same path, so the
+        cache key is its stat fingerprint (constant when no path is set)."""
+        from atlas_camera.comfy.nodes_object_mesh import hdr_path_fingerprint
+        return hdr_path_fingerprint(hdr_plate_path)
+
     def export(self, solve, source_image, write_exr=True, filename_prefix="atlas/scene",
-               max_glb_mb=GLB_BUDGET_MB, project=None):
+               max_glb_mb=GLB_BUDGET_MB, project=None, hdr_plate_path=""):
         np = _require_numpy()
         from atlas_camera.exporters.scene_glb import collect_scene_layers
 
         intr, extr = _usable_camera(solve)
+        hdr_path, hdr_note = _resolve_hdr_plate(hdr_plate_path, write_exr)
         if project is not None:
             folder, stem = project_output_paths(project, "geo", filename_prefix)
         else:
@@ -148,13 +170,15 @@ class AtlasSceneTo3D:
             # (EXR, PLY or GLB) exists. Only then are the sidecars written.
             scene = collect_scene_layers(
                 solve, primary, exr_dir=folder if write_exr else None, exr_prefix=stem,
-                output_root=output_root())
+                output_root=output_root(), primary_hdr_path=hdr_path or None)
             budget, clamp_note = _effective_budget_mb(max_glb_mb)
             _refuse_over_budget_before_writing(scene, budget)
             sidecars = scene.write_sidecars()
             layers, notes = scene.layers, list(scene.notes)
             if clamp_note:
                 notes.append(clamp_note)
+            if hdr_note:
+                notes.append(hdr_note)
             if write_exr and sidecars:
                 notes = [*notes, _sidecar_location_note(folder, project)]
             glb_path = folder / f"{stem}.glb"
@@ -172,6 +196,34 @@ class AtlasSceneTo3D:
                     "result": (model_3d, model_info, camera_info, str(glb_path), report)}
         finally:
             release_output_name(folder, stem)
+
+
+def _resolve_hdr_plate(hdr_plate_path, write_exr) -> tuple[str, str]:
+    """``(resolved_path, note)`` for the optional HDR primary plate.
+
+    Same confined read rules as AtlasHDRVertexTransfer. Every way it is NOT
+    used (sidecars off, refused, missing) is a visible WARNING note -- the
+    export still succeeds, but never silently ships the display plate in its
+    place.
+    """
+    raw = str(hdr_plate_path or "").strip()
+    if not raw:
+        return "", ""
+    if not write_exr:
+        return "", "WARNING: hdr_plate_path ignored - write_exr is off, so no EXR sidecar"
+    from atlas_camera.comfy.nodes_object_mesh import (
+        ABSOLUTE_READ_REFUSED,
+        _resolve_read_path,
+    )
+    path, looked = _resolve_read_path(raw)
+    if looked == ABSOLUTE_READ_REFUSED:
+        return "", ("WARNING: hdr_plate_path refused - must be inside ComfyUI's output/input "
+                    "folder or $ATLAS_PROJECT_ROOT (or set ATLAS_ALLOW_ABSOLUTE_READS=1); "
+                    "the primary EXR is the linearised display plate")
+    if not path:
+        return "", (f"WARNING: hdr_plate_path {raw!r} not found ({looked}); the primary EXR "
+                    "is the linearised display plate")
+    return path, ""
 
 
 def _sidecar_location_note(folder, project) -> str:
@@ -336,9 +388,15 @@ def _export_report(glb_path, mb, written, sidecars, notes, write_exr, camera_inf
         if s["exr"].endswith(".ply"):
             lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
             continue
+        if s.get("exr_origin") == "hdr_plate":
+            lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']} (HDR plate "
+                         f"{s.get('exr_source', '')}, scene-referred)")
+            continue
         lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']}"
                      + ("" if s["scene_referred"] else
                         " (linearised display plate, NOT scene-referred)"))
+        if s.get("exr_note"):
+            lines.append(f"  WARNING: {s['exr_note']}")
     if not write_exr:
         lines.append("- EXR sidecars off")
     lines += [f"- {n}" for n in notes]

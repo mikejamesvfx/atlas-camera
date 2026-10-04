@@ -430,6 +430,19 @@ def _decode_data_uri(uri: str | None) -> Any:
     return Image.open(io.BytesIO(base64.b64decode(payload))).convert("RGB")
 
 
+@dataclass(frozen=True)
+class HDRPlateRef:
+    """An HDR plate the caller ASKED for on a layer (AtlasSceneTo3D's
+    ``hdr_plate_path``): duck-types the float ``plate_ref`` the EXR writer
+    prefers. Unlike a solve's own plate_ref, a mismatch is never silent: the
+    sidecar falls back to the display plate AND says why (``exr_note``)."""
+
+    image_path: str
+    is_proxy: bool = False
+    colorspace: str = ""
+    origin: str = "hdr_plate"
+
+
 def _write_exr_sidecar(path: Path, pil: Any, plate_ref: Any) -> dict[str, Any]:
     """One layer plate as float EXR. A float plate_ref on disk is preferred
     (its own values, its own colourspace tag); otherwise the 8-bit display
@@ -438,20 +451,39 @@ def _write_exr_sidecar(path: Path, pil: Any, plate_ref: Any) -> dict[str, Any]:
 
     from atlas_camera.plate.oiio_io import read_plate, write_exr
 
+    requested = isinstance(plate_ref, HDRPlateRef)
+    fallback_note = ""
     ref_path = getattr(plate_ref, "image_path", None) if plate_ref is not None else None
     if ref_path and Path(ref_path).is_file() and not getattr(plate_ref, "is_proxy", True):
         plate = read_plate(str(ref_path), output_colorspace=None)
         if (plate.width, plate.height) == pil.size:
             cs = plate.input_colorspace or getattr(plate_ref, "colorspace", "")
             write_exr(str(path), plate.pixels, bit_depth="half", source_colorspace=cs or None)
-            return {"exr": path.name, "exr_colorspace": cs, "exr_origin": "plate_ref",
+            info = {"exr": path.name, "exr_colorspace": cs,
+                    "exr_origin": getattr(plate_ref, "origin", "plate_ref"),
                     "scene_referred": True}
+            if requested:
+                info["exr_source"] = Path(ref_path).name[:96]
+            return info
+        if requested:
+            fallback_note = (f"HDR plate {Path(ref_path).name[:96]} is "
+                             f"{plate.width}x{plate.height}, "
+                             f"the plate it replaces is {pil.size[0]}x{pil.size[1]} - NOT used, "
+                             "wrote the linearised display plate instead (convert the same "
+                             "plate at full resolution)")
+    elif requested:
+        fallback_note = (f"HDR plate {Path(str(ref_path or '')).name[:96]!r} is not a "
+                         "readable file - NOT used, wrote "
+                         "the linearised display plate instead")
     from atlas_camera.core.generated_mesh import srgb_to_linear
     lin = srgb_to_linear(np.asarray(pil.convert("RGB"), dtype=np.float32) / 255.0)
     write_exr(str(path), lin.astype(np.float32), bit_depth="half",
               source_colorspace=LINEAR_FROM_DISPLAY)
-    return {"exr": path.name, "exr_colorspace": LINEAR_FROM_DISPLAY,
+    info = {"exr": path.name, "exr_colorspace": LINEAR_FROM_DISPLAY,
             "exr_origin": "linearised_display_plate", "scene_referred": False}
+    if fallback_note:
+        info["exr_note"] = fallback_note
+    return info
 
 
 def write_float_ply(path: Path, vertices: Any, faces: Any, colors: Any) -> str:
@@ -492,8 +524,9 @@ def write_float_ply(path: Path, vertices: Any, faces: Any, colors: Any) -> str:
 
 #: JSON allowance per sidecar reference for fields only known once the file is
 #: written (``exr_colorspace`` read from a float plate_ref, ``exr_origin``,
-#: ``scene_referred``) -- colourspace names are short; this is generous.
-_SIDECAR_UNKNOWN_EXTRAS_BYTES = 256
+#: ``scene_referred``, an HDR plate's ``exr_source`` / fallback ``exr_note``,
+#: ~300 bytes at most) -- generous on purpose.
+_SIDECAR_UNKNOWN_EXTRAS_BYTES = 640
 
 
 @dataclass
@@ -556,6 +589,7 @@ def build_scene_layers(
     exr_dir: str | Path | None = None,
     exr_prefix: str = "atlas_scene",
     output_root: str | Path | None = None,
+    primary_hdr_path: str | Path | None = None,
 ) -> tuple[list[SceneLayer], list[dict[str, Any]], list[str]]:
     """Every projection layer of ``solve`` as a ``SceneLayer``, sidecars written.
 
@@ -563,7 +597,8 @@ def build_scene_layers(
     one call. Returns ``(layers, sidecars, notes)``.
     """
     scene = collect_scene_layers(solve, primary_plate, exr_dir=exr_dir,
-                                 exr_prefix=exr_prefix, output_root=output_root)
+                                 exr_prefix=exr_prefix, output_root=output_root,
+                                 primary_hdr_path=primary_hdr_path)
     scene.write_sidecars()
     return scene.layers, scene.sidecars, scene.notes
 
@@ -575,6 +610,7 @@ def collect_scene_layers(
     exr_dir: str | Path | None = None,
     exr_prefix: str = "atlas_scene",
     output_root: str | Path | None = None,
+    primary_hdr_path: str | Path | None = None,
 ) -> SceneCollection:
     """Every projection layer of ``solve`` as a ``SceneLayer``; NO file written.
 
@@ -590,6 +626,10 @@ def collect_scene_layers(
     records ``*_output_path``: its path relative to that root, so a COPY of
     the GLB elsewhere in the output tree (Save 3D puts one in ``3d/``) can
     still find the plates; a bare name only resolves beside the original.
+    ``primary_hdr_path`` (an already-resolved float EXR, e.g. the matrixZone
+    ACEScg plate of the same photo) replaces the PRIMARY plate's EXR sidecar
+    with that scene-referred plate. The GLB keeps the display PNG (glTF has
+    no float texture); a size mismatch falls back and says so in the sidecar.
     """
     from atlas_camera.core.proxy_geometry import PROXY_ROLE
     from atlas_camera.exporters._layers import mesh_from_primitive
@@ -690,8 +730,9 @@ def collect_scene_layers(
     primary = [p for p in (solve_scene.proxy_geometry or [])
                if (p.metadata or {}).get("role") == PROXY_ROLE]
     if primary:
-        extras, job = plate_entry("primary", primary_plate,
-                                  getattr(solve_scene, "plate_ref", None))
+        primary_ref = (HDRPlateRef(str(primary_hdr_path)) if primary_hdr_path
+                       else getattr(solve_scene, "plate_ref", None))
+        extras, job = plate_entry("primary", primary_plate, primary_ref)
         add_meshes(primary, primary_plate, extras, "", job)
     for src in getattr(solve, "projection_sources", None) or []:
         try:

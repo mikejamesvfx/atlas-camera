@@ -141,9 +141,11 @@ def test_project_sockets_are_appended_last():
     from atlas_camera.comfy.nodes_matrixzone import AtlasMatrixZoneStitch
     from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
 
-    for cls in (AtlasSceneTo3D, AtlasMatrixZoneStitch):
+    for cls, after in ((AtlasSceneTo3D, ["hdr_plate_path"]), (AtlasMatrixZoneStitch, [])):
         opt = list(cls.INPUT_TYPES()["optional"])
-        assert opt[-1] == "project" and cls.INPUT_TYPES()["optional"]["project"][0] == "ATLAS_PROJECT"
+        # project came last when it was added; only later appends may follow it
+        assert opt[len(opt) - 1 - len(after):] == ["project", *after]
+        assert cls.INPUT_TYPES()["optional"]["project"][0] == "ATLAS_PROJECT"
 
 
 def test_a_project_lane_inside_output_also_survives_a_save3d_copy(tmp_path, monkeypatch):
