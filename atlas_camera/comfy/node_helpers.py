@@ -1249,7 +1249,7 @@ def output_paths(filename_prefix: str):
     an absolute / anchored prefix, or one whose resolved path escapes
     ``output/``, is a ValueError naming the prefix.
     """
-    from pathlib import Path
+    from pathlib import Path, PureWindowsPath
 
     prefix = str(filename_prefix or "atlas/scene").strip().replace("\\", "/")
     try:
@@ -1265,7 +1265,10 @@ def output_paths(filename_prefix: str):
                                    max(int(counter), _next_counter(folder, filename)))
 
     rel = Path(prefix)
-    if rel.is_absolute() or rel.anchor:
+    # A drive or UNC prefix (`C:/x`, `C:x`, `//server/share`) is anchored on
+    # Windows only; on POSIX it would quietly land in an `output/C:/` folder. A
+    # workflow saved on one OS runs on the other, so refuse it on both.
+    if rel.is_absolute() or rel.anchor or PureWindowsPath(prefix).anchor:
         raise ValueError(f"output prefix {filename_prefix!r} is absolute; give a path "
                          "relative to the output directory")
     root = Path("output").resolve()
