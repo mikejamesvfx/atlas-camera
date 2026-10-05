@@ -2962,7 +2962,7 @@
    "tests": 6,
    "mcp_tools": 0,
    "repo_tools": 1,
-   "docs": 3,
+   "docs": 2,
    "product_evidence": true,
    "evidence_kinds": [
     "workflow",
