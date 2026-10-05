@@ -15,6 +15,7 @@ import math
 
 from atlas_camera.core.camera_math import derive_sensor_height_mm
 from atlas_camera.core.camera_path import sample_camera_path, sample_camera_path_fov_deg
+from atlas_camera.core.generated_mesh import GENERATED_SOURCE
 from atlas_camera.core.schema import AtlasCameraPath, AtlasIntrinsics, AtlasSolve
 from atlas_camera.exporters.dcc_transform import row_vector_flat
 
@@ -59,6 +60,31 @@ def _gf_mat4(world_mat: Any, Gf: Any) -> Any:
     return Gf.Matrix4d(*row_vector_flat(world_mat))
 
 
+def _sdf_identifier(name: Any, fallback: str) -> str:
+    """A valid Sdf prim identifier: ``[A-Za-z_][A-Za-z0-9_]*``.
+
+    Pure Python (mirrors ``Tf.MakeValidIdentifier``): every invalid character
+    becomes ``_``, a leading digit gets a ``_`` prefix, empty -> ``fallback``.
+    """
+    import re
+    ident = re.sub(r"[^A-Za-z0-9_]", "_", str(name or "").strip())
+    if not ident.strip("_"):
+        ident = fallback
+    if ident[0].isdigit():
+        ident = "_" + ident
+    return ident
+
+
+def _unique_prim_name(name: Any, fallback: str, used: set[str]) -> str:
+    """:func:`_sdf_identifier`, suffixed ``_2``, ``_3`` ... until unused."""
+    base = _sdf_identifier(name, fallback)
+    out, n = base, 2
+    while out in used:
+        out, n = f"{base}_{n}", n + 1
+    used.add(out)
+    return out
+
+
 def _define_ground_plane(stage: Any, path: str, Gf: Any, Sdf: Any, UsdGeom: Any, Vt: Any) -> Any:
     """Define a 40×40 m quad mesh at Y=0 in the XZ plane with flat `st` UV primvar.
 
@@ -88,6 +114,27 @@ def _define_ground_plane(stage: Any, path: str, Gf: Any, Sdf: Any, UsdGeom: Any,
         Gf.Vec2f(0.0, 1.0),
     ]))
     return plane
+
+
+def _define_generated_mesh(stage: Any, path: str, meta: dict, Gf: Any, Sdf: Any,
+                           UsdGeom: Any, Vt: Any) -> Any:
+    """World-space triangle mesh with ``primvars:displayColor`` (vertex, linear)."""
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+
+    pts = [float(v) for v in meta["vertices"]]
+    idx = [int(i) for i in meta["faces"]]
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    mesh.CreatePointsAttr().Set(Vt.Vec3fArray(
+        [Gf.Vec3f(pts[i], pts[i + 1], pts[i + 2]) for i in range(0, len(pts), 3)]))
+    mesh.CreateFaceVertexCountsAttr().Set(Vt.IntArray([3] * (len(idx) // 3)))
+    mesh.CreateFaceVertexIndicesAttr().Set(Vt.IntArray(idx))
+    mesh.CreateSubdivisionSchemeAttr().Set("none")
+    cols = meta.get("vertex_colors") or []
+    if len(cols) == len(pts):
+        lin = srgb_to_linear([cols[i:i + 3] for i in range(0, len(cols), 3)])
+        dc = mesh.CreateDisplayColorPrimvar(UsdGeom.Tokens.vertex)
+        dc.Set(Vt.Vec3fArray([Gf.Vec3f(*map(float, c)) for c in lin]))
+    return mesh
 
 
 def _define_projection_material(
@@ -240,16 +287,31 @@ class USDExporter:
 
         _define_ground_plane(stage, "/AtlasProjectionScene/atlas_projection_plane", Gf, Sdf, UsdGeom, Vt)
 
+        # Prim names are sanitised to valid Sdf identifiers and made unique:
+        # two generated imports both named "object" must give two prims, not
+        # one prim defined twice (the second silently overwriting the first).
+        used_names = {"atlas_projection_plane"}
         for index, primitive in enumerate(solve.projection_scene.proxy_geometry):
-            prim_name = (primitive.name or f"proxy_{index}").replace(" ", "_").replace("-", "_")
+            prim_name = _unique_prim_name(primitive.name, f"proxy_{index}", used_names)
             prim_path = f"/AtlasProjectionScene/{prim_name}"
+            meta = primitive.metadata or {}
             if primitive.primitive_type == "plane":
                 prim = _define_ground_plane(stage, prim_path, Gf, Sdf, UsdGeom, Vt)
+            elif (primitive.primitive_type == "mesh" and meta.get("source") == GENERATED_SOURCE
+                  and meta.get("vertices") and meta.get("faces")):
+                # Generated object (AtlasImportGeneratedMesh): real geometry,
+                # world-space, with the model's colour as displayColor so a DCC
+                # shows the hidden side. Other mesh primitives keep their
+                # historical stand-in below.
+                prim = _define_generated_mesh(stage, prim_path, meta, Gf, Sdf, UsdGeom, Vt)
             else:
                 prim = UsdGeom.Cube.Define(stage, prim_path)
                 dx, dy, dz = primitive.dimensions
                 prim.GetSizeAttr().Set(float(max(dx, dy, dz)))
             prim.AddTransformOp().Set(_gf_mat4(primitive.transform_matrix, Gf))
+            # The prim name may be sanitised or suffixed (_2, _3); keep the
+            # solve's own name so a DCC re-import can map the prim back.
+            prim.GetPrim().SetCustomDataByKey("atlas:source_name", str(primitive.name))
 
         stage.GetRootLayer().Save()
         return destination

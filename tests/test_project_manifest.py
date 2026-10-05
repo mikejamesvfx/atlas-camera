@@ -1,4 +1,4 @@
-"""atlas_project.json — the versioned reproducibility manifest."""
+"""atlas_export.json (atlas_project.json before ADR-005) — the versioned reproducibility manifest."""
 
 import json
 import time

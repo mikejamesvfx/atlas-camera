@@ -963,6 +963,16 @@ def test_glb_bakes_the_smudge_as_vertex_colour_on_its_own_material(cliff, tmp_pa
         "outer rings look like point samples, not an along-rim average")
     assert np.allclose(rgba[t == 0.0][:, :3], 1.0), "surface must stay white"
 
+    # The ribbon adds a COLOR_0 part to the binary buffer, which moves the image
+    # one slot further along. The exporter used to derive the image's offset from
+    # its bufferView index instead of its part position, so with a ribbon present
+    # the texture pointed at the colours and the plate decoded as garbage. Read
+    # the signature rather than trusting the offset.
+    img_bv = gltf["bufferViews"][gltf["images"][0]["bufferView"]]
+    img_start = 20 + json_len + 8 + img_bv["byteOffset"]
+    assert blob[img_start:img_start + 8] == b"\x89PNG\r\n\x1a\n", (
+        "the embedded texture bufferView does not land on a PNG")
+
 
 def test_glb_without_a_ribbon_is_unchanged(cliff, tmp_path):
     from atlas_camera.exporters.relief_mesh_exporter import export_relief_mesh_glb
@@ -1071,3 +1081,48 @@ def test_the_fade_is_opaque_at_the_rim_and_gone_by_the_outer_edge():
     assert float(ribbon_alpha(1.0)) == pytest.approx(0.0)
     t = np.linspace(0.0, 1.0, 64)
     assert np.all(np.diff(ribbon_alpha(t)) <= 1e-6), "the fade must be monotonic"
+
+
+def test_glb_jpeg_texture_with_ribbon_keeps_the_image_last_and_colours_unchanged(cliff, tmp_path):
+    """With a ribbon the image is the FIFTH part (after colours). The 2026-08 bug
+    pointed it one part early; JPEG must land on its own bytes, and the codec must
+    not touch the vertex colours the smudge was baked into."""
+    import io
+    import json
+    import struct
+
+    from PIL import Image
+
+    from atlas_camera.exporters.relief_mesh_exporter import export_relief_mesh_glb
+
+    mesh = build_relief_mesh(cliff, transition_ribbon=True, ribbon_px=RIBBON_PX,
+                             ribbon_smudge_px=10.0, **BUILD)
+    grad = np.zeros((H, W, 3), dtype=np.uint8)
+    grad[:, :, 0] = (np.arange(W) % 32 < 16) * 255
+    grad[:, :, 2] = 255 - grad[:, :, 0]
+    tex = Image.fromarray(grad)
+
+    def load(path):
+        blob = open(path, "rb").read()
+        json_len = struct.unpack("<I", blob[12:16])[0]
+        return json.loads(blob[20:20 + json_len].decode("utf-8")), blob[20 + json_len + 8:]
+
+    png_gltf, png_bin = load(export_relief_mesh_glb(mesh, tmp_path / "png", texture=tex)["glb"])
+    gltf, binary = load(export_relief_mesh_glb(mesh, tmp_path / "jpeg", texture=tex,
+                                               texture_format="JPEG")["glb"])
+
+    assert len(gltf["meshes"][0]["primitives"]) == 2
+    image_view = gltf["images"][0]["bufferView"]
+    assert image_view == 4 and gltf["images"][0]["mimeType"] == "image/jpeg"
+    view = gltf["bufferViews"][image_view]
+    blob = binary[view["byteOffset"]:view["byteOffset"] + view["byteLength"]]
+    assert blob[:3] == b"\xff\xd8\xff" and blob[-2:] == b"\xff\xd9"
+    assert Image.open(io.BytesIO(blob)).size == (W, H)
+
+    def colours(g, b):
+        acc = g["accessors"][g["meshes"][0]["primitives"][0]["attributes"]["COLOR_0"]]
+        v = g["bufferViews"][acc["bufferView"]]
+        return b[v["byteOffset"]:v["byteOffset"] + v["byteLength"]]
+
+    assert colours(gltf, binary) == colours(png_gltf, png_bin)
+    assert gltf["materials"] == png_gltf["materials"]

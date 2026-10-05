@@ -49,6 +49,44 @@ foreground projection still gives a fully dolly-able scene, the `bg_xray` layer
 is just small. Measured coverage: temple city ~50%, interior portal ~24%, open
 terrain near 0 (graceful).
 
+## Two ways to author the move
+
+The Nuke route below is the **hand-keyed** one: you open the exported script and
+key the camera yourself. It is still the right answer when a comp artist owns the
+move. But Atlas has authored camera moves **server-side** since the camera-path
+system landed, and that lane is what every automated consumer reads:
+
+| | Hand-keyed in Nuke | Authored as an `ATLAS_CAMERA_PATH` |
+|---|---|---|
+| Author with | `RenderCam1` translate/rotate keys | the 🧊 Viewport's 🎥 Camera Path mode, or `AtlasCameraMovePreset` 🎬 headless (12 presets: orbit, dolly, crane, push-in, vertigo, …) |
+| Interpolation | Nuke's curves | Catmull-Rom with per-segment easing (`core/camera_path.py`, mirrored in JS for live scrubbing) |
+| Lens over time | whatever you key | a vertical `fov_deg` channel — `vertigo` keys it, so a counter-zoom is one preset |
+| Reaches | the comp | `AtlasMoveBudget` 📐 (how far the plate supports moving), `AtlasDisocclusionGuide` 🟣, `AtlasGhostPixelMap` 👻, `AtlasConditioningBundle` 🎛, `AtlasExportCameraPathUSD` 🎥 |
+| Exports | the render | an **animated USD camera** (the only animated-camera export Atlas writes; Nuke/Maya/Blender receive a still camera plus a keyable rig) |
+
+A path is worth authoring in Atlas whenever something other than a human needs to
+read the move — a move budget, a disocclusion guide, or a generative video model.
+
+### Handing the move to a video model
+
+`AtlasConditioningBundle` 🎛 renders every frame of a path once and emits what a
+video model can actually be conditioned on: metric depth, world normals, world
+position, **analytically derived optical flow**, per-frame K, and the ghost class
+map that says which pixels the photograph never saw. This is the geometric
+alternative to the semantic camera control every hosted video platform ships —
+instead of "slow dolly left, 35 mm", the model receives the exact displacement of
+every pixel and the exact set of pixels it is allowed to invent.
+
+Flow is derived, not estimated: with depth and two calibrated cameras it is
+closed-form, so Atlas already knows the answer a flow network would guess at.
+
+`AtlasAdherenceScore` 📐 then measures whether the model obeyed. Note what it
+refuses to do: it will not report a headline number for a clip that repeats its
+first frame (which scores *well* on a naive measure, since a static plate agrees
+with the reprojection wherever the move is small), and it requires a
+prompt-only control arm as a wired input. See its catalog row for why both
+refusals are load-bearing.
+
 ## The camera move, in Nuke
 
 1. **File → Open** the exported `nuke_layers.nk`. `RenderCam1` auto-wires to

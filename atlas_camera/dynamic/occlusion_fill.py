@@ -24,6 +24,10 @@ from typing import Any
 
 from atlas_camera.core.camera_spec import CameraSpec
 from atlas_camera.core.projection_render import gather_scene_meshes, render_scene
+from atlas_camera.core.reprojection import (
+    INFINITY_M as _CORE_INFINITY_M,
+    reproject_at_infinity as _core_reproject_at_infinity,
+)
 
 # LTX inpaint pipeline sentinel (LTXVInpaintPreprocess _BG_COLOR_RGB).
 LTX_INPAINT_GREEN = (102 / 255.0, 1.0, 0.0)
@@ -235,7 +239,8 @@ def write_exr_sequence(frame_paths, out_dir: Path) -> list[Path]:
 #: warp is the pure-rotation (infinite) homography for every practical purpose,
 #: while still going through the same convention-correct project/back-project
 #: helpers as the rest of the codebase instead of a hand-rolled K R K^-1.
-_INFINITY_M = 1.0e6
+#: Kept as an alias of the canonical value in ``core.reprojection``.
+_INFINITY_M = _CORE_INFINITY_M
 
 
 def plate_hole_survey(solve, source_image, *, resolution=1024):
@@ -307,35 +312,12 @@ def not_disocclusion_mask(plate, *, view, fx, fy, cx, cy, width, height):
     return drop | (r["inside"] & plate_hole[vi, ui])
 
 
-def reproject_at_infinity(plate, *, view, fx, fy, cx, cy, width, height):
-    """Where each pixel of a camera lands in the PLATE, assuming infinity.
-
-    Returns ``{"inside", "u", "v"}`` — boolean plus float plate-raster
-    coordinates (the raster ``plate`` was surveyed at). Split out of
-    ``not_disocclusion_mask`` because the coordinates are useful in their own
-    right: sky is at infinity, so sampling the plate through this mapping IS
-    the correct sky for the moved camera, which is how a dropped (not
-    disocclusion) pixel gets real content instead of a sentinel.
-    """
-    np, _ = _require_deps()
-    from atlas_camera.core.depth_geometry import back_project_normals
-    from atlas_camera.core.patch_registration import _project
-
-    p_h, p_w = np.asarray(plate["mask"]).shape[:2]
-    height, width = int(height), int(width)
-    depth = np.full((height, width), _INFINITY_M, dtype=np.float64)
-    bp = back_project_normals(depth, view_matrix=view,
-                              fx=fx, fy=fy, cx=cx, cy=cy)
-    u, v, fwd = _project(bp.pts_world.reshape(-1, 3),
-                         {"view_matrix": plate["view"], "fx": plate["fx"],
-                          "fy": plate["fy"], "cx": plate["cx"],
-                          "cy": plate["cy"]})
-    inside = (np.isfinite(u) & np.isfinite(v) & (fwd > 1e-6)
-              & (u >= 0) & (u < p_w) & (v >= 0) & (v < p_h))
-    return {"inside": inside.reshape(height, width),
-            "u": np.nan_to_num(u).reshape(height, width),
-            "v": np.nan_to_num(v).reshape(height, width),
-            "plate_width": p_w, "plate_height": p_h}
+#: ``reproject_at_infinity`` MOVED to ``core.reprojection`` 2026-09-22 so the
+#: per-frame conditioning sequence could live in ``core`` alongside
+#: ``ghost_pixels``, which classifies with it and may not import ``dynamic``.
+#: Re-exported here because ``not_disocclusion_mask`` and ``survey_hole_rois``
+#: below call it by this name, as do callers outside this module.
+reproject_at_infinity = _core_reproject_at_infinity
 
 
 def survey_hole_rois(solve, source_image, views, *, survey_resolution=1024,

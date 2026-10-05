@@ -57,7 +57,7 @@ the viewport ℹ HUD shows an orange ⚠ when scale is unverified, the ✅ Solve
 Gate report says why, export summaries carry the warning, and
 `AtlasSceneHealthGate` 🩺 (the acknowledgement gate before the exporters)
 holds the solve on any red flag until you fix it or knowingly continue —
-the acknowledged report rides into every export and the `atlas_project.json`
+the acknowledged report rides into every export and the `atlas_export.json`
 reproducibility manifest. Fix an assumed scale with 📐 `AtlasScaleOverride`
 (camera height = floors × ~3.2 m on elevated plates) or a scale reference.
 
@@ -83,7 +83,7 @@ A symlink connects the node pack into ComfyUI:
 
 ---
 
-## 2. The Node Catalog (121 standard + 10 experimental + 2 legacy + 2 iOS = 135 registered)
+## 2. The Node Catalog (131 standard + 10 experimental + 2 legacy + 2 iOS = 145 registered)
 
 Grouped by pipeline stage rather than alphabetically — this is the order you'd
 actually wire them in. The subsections below **are** the Add-Node menu folders:

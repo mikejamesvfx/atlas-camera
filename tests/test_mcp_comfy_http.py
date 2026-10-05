@@ -503,3 +503,96 @@ def test_every_shipped_workflow_node_is_resolvable():
     assert not unknown, (
         "shipped workflows reference node types the flattener cannot place:\n  "
         + "\n  ".join(f"{k}: {v}" for k, v in unknown.items()))
+
+
+def test_load3d_viewport_state_owns_a_widget_slot():
+    # Save 3D (Advanced): widgets_values ["3d/x", "", 1024, 1024] where "" is
+    # viewport_state (LOAD_3D). Skipping that slot shifted width <- "".
+    oi = {"Save3DAdvanced": {"input": {
+        "required": {"model_3d": ["FILE_3D_GLB", {}],
+                     "filename_prefix": ["STRING", {"default": "3d/ComfyUI"}],
+                     "viewport_state": ["LOAD_3D", {}],
+                     "width": ["INT", {"default": 1024}],
+                     "height": ["INT", {"default": 1024}]},
+        "optional": {"camera_info": ["LOAD3D_CAMERA", {}]}}}}
+    got = C.widget_inputs(oi, "Save3DAdvanced", ["3d/atlas_scene", "", 1024, 768])
+    assert got == {"filename_prefix": "3d/atlas_scene", "viewport_state": "",
+                   "width": 1024, "height": 768}
+    assert not C.is_widget(["LOAD3D_CAMERA", {}])
+
+
+def test_queue_time_node_errors_are_reported(monkeypatch):
+    def fake_http(url, *_args, **_kwargs):
+        if url.endswith("/prompt"):
+            return {"prompt_id": "p1", "node_errors": {"1014": {
+                "class_type": "Save3DAdvanced",
+                "errors": [{"type": "invalid_input_type",
+                            "message": "Failed to convert an input value to a INT value",
+                            "details": "width, , invalid literal"}],
+                "dependent_outputs": ["1014"]}}}
+        if url.endswith("/history/p1"):
+            return {"p1": {"status": {"completed": True, "messages": []},
+                           "outputs": {"7": {}}}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(C, "http_json", fake_http)
+    monkeypatch.setattr(C.time, "sleep", lambda _seconds: None)
+    result = C.queue_and_wait({}, timeout=10, poll_s=0)
+    assert result["completed"] is True
+    assert len(result["errors"]) == 1
+    assert result["errors"][0].startswith("NOT RUN Save3DAdvanced (node 1014): Failed")
+    assert "width" in result["errors"][0]
+
+
+def _dyn_oi():
+    return {"DecimateMesh": {"input": {"required": {
+        "mesh": ["MESH", {}],
+        "target_faces": ["INT", {"default": 50000, "min": 1, "max": 10_000_000}],
+        "placement_mode": ["COMFY_DYNAMICCOMBO_V3", {"options": [
+            {"key": "midpoint", "inputs": {"required": {}}},
+            {"key": "qem", "inputs": {"required": {"weight": ["FLOAT", {"min": 0.0, "max": 0.5}]}}},
+        ]}],
+    }}}}
+
+
+def test_validator_counts_dynamic_combo_sub_widgets_and_checks_their_ranges():
+    oi = _dyn_oi()
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "midpoint"])
+    assert want == 2 and [k for k, _, _ in items] == ["target_faces", "placement_mode"]
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "qem", 0.9])
+    assert want == 3 and items[-1][0] == "placement_mode.weight"
+    ui = {"nodes": [{"id": 1, "type": "DecimateMesh", "inputs": [], "outputs": [],
+                     "widgets_values": [50000, "qem", 0.9]}], "links": []}
+    errs, _ = C.validate_ui(ui, oi)
+    assert "DecimateMesh id1: placement_mode.weight=0.9 ABOVE max 0.5" in errs
+    assert not any("widgets_values" in e or "placement_mode NOT" in e for e in errs)
+
+
+def test_dynamic_combo_tolerates_bare_string_options():
+    """A dynamic-combo option list may mix bare strings (no sub-widgets)
+    with {"key", "inputs"} dicts; o.get("key") on a string raised
+    AttributeError and took the whole validate/run down."""
+    oi = _dyn_oi()
+    opts = oi["DecimateMesh"]["input"]["required"]["placement_mode"][1]["options"]
+    opts.insert(0, "uniform")
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "uniform"])
+    assert want == 2
+    assert items[-1] == ("placement_mode",
+                         ["COMBO", {"options": ["uniform", "midpoint", "qem"]}], "uniform")
+    # The dict options still drive their sub-widgets alongside a string one.
+    items, want = C._widget_walk(oi, "DecimateMesh", [50000, "qem", 0.25])
+    assert want == 3 and items[-1] == ("placement_mode.weight",
+                                       ["FLOAT", {"min": 0.0, "max": 0.5}], 0.25)
+    assert C.widget_inputs(oi, "DecimateMesh", [50000, "uniform"]) == {
+        "target_faces": 50000, "placement_mode": "uniform"}
+    assert C.widget_inputs(oi, "DecimateMesh", [50000, "qem", 0.25])[
+        "placement_mode.weight"] == 0.25
+    ui = {"nodes": [{"id": 1, "type": "DecimateMesh", "inputs": [], "outputs": [],
+                     "widgets_values": [50000, "uniform"]}], "links": []}
+    errs, _ = C.validate_ui(ui, oi)
+    assert not any("widgets_values" in e or "placement_mode" in e for e in errs)
+
+
+def test_validator_accepts_comma_union_input_types():
+    assert C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF,FILE_3D", "FILE_3D_GLB")
+    assert not C._type_accepts("FILE_3D_GLB,FILE_3D_GLTF", "IMAGE")

@@ -109,7 +109,7 @@ cd ui && npm install && npm run dev
 
 
 
-- `dev` — numpy, opencv-python, pytest
+- `dev` — numpy, opencv-python, pytest, trimesh, scipy, fast-simplification
 
 - `vision` — numpy, opencv-python (runtime vision)
 
@@ -118,6 +118,7 @@ cd ui && npm install && npm run dev
 - `usd` — usd-core
 
 - `ui` — FastAPI, uvicorn, Pillow, python-multipart
+- `retopo` — trimesh + scipy (Taubin smooth) and fast-simplification (quadric decimate) for `AtlasRetopologizeLayer`. CPU-only, all permissive.
 
 - `neural` — torch + GeoCalib (learned single-image camera prior). GeoCalib is GitHub-only: `pip install "git+https://github.com/cvg/GeoCalib.git"`. torch is expected from the host env (e.g. ComfyUI's venv).
 
@@ -153,7 +154,7 @@ atlas_camera.exporters  � Maya, Blender, Nuke, USD, review package writers
 atlas_camera.importers  � Atlas JSON, USD camera, and Record3D (.r3d ARKit
                           capture) loaders
 
-atlas_camera.comfy      � ComfyUI node library (121 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
+atlas_camera.comfy      � ComfyUI node library (131 standard + 10 experimental + 2 legacy + 2 iOS, no hard Comfy dep;
 
                           nodes.py is a façade over node_helpers / node_registry / nodes_*
 
@@ -201,7 +202,7 @@ The public API is `import atlas` (thin facade in `atlas_camera/__init__.py`). Th
 
 ## ComfyUI integration — see docs/NODE_CATALOG.md
 
-The full node catalog (121 standard + 10 experimental + 2 legacy + 2 iOS = 135
+The full node catalog (131 standard + 10 experimental + 2 legacy + 2 iOS = 145
 registered), `comfy/` module layout,
 setup/symlink instructions, double-import guard, `atlas_blockout.js` frontend
 reference, `/atlas/camera_data` endpoint, and the example-workflow catalog all
@@ -213,7 +214,7 @@ Quick facts that must never drift (details in the catalog):
   `nodes_*` responsibility modules; import from the specific module in new
   code. `tests/test_facade_surface.py` pins all facade names.
 - Registered node keys + display names are a saved-workflow contract
-  (`tests/test_comfy_node_registry.py` pins the surface; currently 121 standard
+  (`tests/test_comfy_node_registry.py` pins the surface; currently 131 standard
   + 10 experimental + 2 legacy + 2 iOS).
 - `comfy/__init__.py` loads twice at startup — route registration sits behind
   a double-import guard; keep it there.
@@ -381,6 +382,11 @@ Geometry & projection
 - Export-node transforms (interior hole fill, retopo widgets) never touch the
   live projection mesh — live retopo happens ONLY via `AtlasRetopologizeLayer`,
   which regenerates projective UVs (DESIGN_RULES 2026-07-24 revision).
+- Generated object meshes (Pixal3D via `AtlasObjectCrop` -> `AtlasImportGeneratedMesh`):
+  the crop is a ROTATED virtual camera (centred pinhole, FOV from the solve,
+  never MoGe); scale along rays is MEASURED against metric depth; photo paints
+  where seen (`photo_weight`), vertex colour elsewhere; hidden side is a
+  hypothesis. Full rule in design-rules.md.
 - Depth model doctrine: exterior -> V2-Metric-Outdoor, interior -> MoGe (or
   V2-Indoor); DA3 installs with `pip --no-deps`. Depth is SHARED via
   `ATLAS_DEPTH_MAP` so branches agree on metric scale.
@@ -478,3 +484,22 @@ Available gstack skills:
 
 Install: `git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup`
 (Windows install uses file copies — re-run `./setup` after every `git pull`.)
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec

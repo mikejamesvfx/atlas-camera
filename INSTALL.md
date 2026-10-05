@@ -12,6 +12,27 @@ pip install -e ".[dev]"
 python -m pytest -q
 ```
 
+### Running the tests inside a ComfyUI venv
+
+ComfyUI's venv ships torch, so tests that skip in a bare `.venv` actually run
+there, and a few need packages ComfyUI does not bring. Install them one by one
+rather than `[dev]`, whose `opencv-python` can fight the other `cv2` builds that
+node packs install:
+
+```powershell
+pip install pytest trimesh scipy fast-simplification
+# the JPEG/RAW import tests also need exifread, the web workbench tests
+# need fastapi + python-multipart:
+pip install exifread fastapi python-multipart
+```
+
+Without exifread or the workbench packages those tests fail rather than skip;
+to leave the workbench out instead, add
+`--ignore=tests/test_ui_api_error_handling.py --ignore=tests/test_ui_backend.py`.
+The MCP wiring test checks its routes everywhere and runs its MCP half only
+where the `mcp` SDK is installed, which may well not be ComfyUI's venv (see
+[docs/MCP_SERVER.md](docs/MCP_SERVER.md)).
+
 ## ComfyUI Node Pack Install
 
 **Clone-and-go (simplest — no pip install):** clone the repository straight
@@ -126,6 +147,10 @@ Notes:
   (OpenImageIO) — `pip install -e ".[raw,oiio]"`. It no longer touches OpenCV.
   If the write fails the node degrades gracefully: the plate_ref is marked
   proxy and the report names the real cause.
+- **Ordinary JPEGs go through the same importer.** `AtlasLoadRAW` reads a
+  JPEG's EXIF with `exifread` as well, so a JPEG import needs `[raw]` too.
+  Without it the import stops with a missing-module error rather than falling
+  back. Into an existing ComfyUI venv, `pip install exifread` is enough for this.
 
   > **`OPENCV_IO_ENABLE_OPENEXR=1` is no longer needed, and never could have
   > helped on opencv 5.** That variable only lifts a *runtime* disable of a
@@ -159,6 +184,21 @@ The development extra includes these dependencies for the test suite:
 ```powershell
 pip install -e ".[dev]"
 ```
+
+## Optional Mesh Retopology
+
+`AtlasRetopologizeLayer`'s `smooth` and `decimate` methods need three CPU-only
+packages: trimesh and scipy for Taubin smoothing, and fast-simplification for
+quadric decimation (MIT, BSD-3 and MIT):
+
+```powershell
+pip install -e ".[retopo]"
+# or, into an existing ComfyUI venv:
+pip install trimesh scipy fast-simplification
+```
+
+Without them that step does not run, and the node's report (or the error) names
+the package to install.
 
 ## Optional Local UI
 
@@ -502,6 +542,46 @@ optional external pieces — each fails soft or has a documented placeholder:
   `git show 10e600b:examples/atlas_qwen_image_edit_2511_multiangle_camera.json`). The
   branch stays paused (ExecutionBlocker) until 📐 Extract Angle runs, so the
   rest of the workflow works without these models installed.
+
+## Optional: generated objects and HDR plates (ComfyUI V135+)
+
+Two research lanes drive models that run as ComfyUI's own nodes rather than as
+Atlas extras, so there is nothing to `pip install`. You need ComfyUI V135 or later
+and the model files below in ComfyUI's model folders. Read the licence notes in
+[THIRD_PARTY.md](THIRD_PARTY.md#comfyui-core-models-driven-by-atlas-nodes-user-downloaded)
+before any paid work.
+
+### Pixal3D: an object's hidden sides
+
+Workflow: the Pixal3D object research workflow under `research/` (not yet
+benchmark-green).
+
+| File | Folder | Loaded by |
+|---|---|---|
+| `pixal3d_int8_convrot.safetensors` | `models/diffusion_models/pixal3D/` | `UNETLoader` |
+| `trellis_2_shape_vae_bf16.safetensors` | `models/vae/` | `VAELoader` |
+| `trellis_2_texture_vae_bf16.safetensors` | `models/vae/` | `VAELoader` |
+| `dino_v3_L_naf_fp32.safetensors` | `models/clip_vision/` | `CLIPVisionLoader` |
+
+All four come from the Comfy-Org/Pixal3D repack on Hugging Face; the workflow's
+loader nodes carry the download links.
+
+### LTX-2.5 SDR→HDR: full-resolution HDR plates
+
+Workflows: the two HDR research workflows under `research/`, one for a still
+(zoned with matrixZone) and one for a clip or the viewport's baked camera move. They use the `LTXV*` nodes; if any load red,
+install ComfyUI-LTXVideo and mind the kornia note above.
+
+| File | Loaded by |
+|---|---|
+| `ltx-2.5-22b-distilled-transformer-bf16.safetensors` | `UNETLoader` |
+| `ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors` | `LTXICLoRALoaderModelOnly` |
+| `ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors` | `LTXVLoadConditioning` |
+| `ltx-2.5-video-vae-conv-bf16.safetensors`, `ltx-2.5-audio-vae-bf16.safetensors` | `VAELoader` |
+
+The still workflow defaults to a 2x2 grid at the 4K tier: on an 8K plate it fits
+a 32 GB GPU and runs in about 14.5 minutes cold. On a smaller card, drop to 4x4
+(1080p-tier zones), which takes about 23 minutes.
 
 ## ComfyUI Adapter
 

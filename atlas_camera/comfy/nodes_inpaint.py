@@ -32,7 +32,7 @@ from atlas_camera.comfy.node_helpers import (
     _seg_coverage,
     build_segmentation_cascade,
 )
-
+from atlas_camera.comfy.sam3_core_backend import HF_BACKEND as _SAM3_HF_BACKEND
 
 
 
@@ -278,6 +278,17 @@ class AtlasSemanticMask:
         return (mask, report)
 
 
+def _is_oom(exc: BaseException) -> bool:
+    """Torch/accelerator out-of-memory, by name (no torch import needed)."""
+    return (type(exc).__name__ == "OutOfMemoryError"
+            or "out of memory" in str(exc).lower())
+
+
+def _sam3_checkpoint_choices():
+    from atlas_camera.comfy.sam3_core_backend import sam3_checkpoint_choices
+    return sam3_checkpoint_choices()
+
+
 class AtlasSAM3Mask:
     """🪄 Native SAM3 concept mask via transformers — no triton/comfyui-rmbg
     dependency.
@@ -345,14 +356,60 @@ class AtlasSAM3Mask:
                 "concepts_extra": ("STRING", {"forceInput": True,
                     "tooltip": "Additional comma-separated concepts, unioned with "
                                "`concepts`. Wire a second sam_prompt output here."}),
+                # APPENDED 2026-10-02 (positional rule): run SAM3 through
+                # ComfyUI's OWN model stack from a checkpoint (Comfy-Org's
+                # sam3.1_multiplex_fp16) instead of the gated HF repo. The HF
+                # value stays first and default, so saved graphs are unchanged.
+                # Values are FIXED: a disk-listed combo failed validation
+                # on any machine without the same file. Append-only from here.
+                "sam3_checkpoint": (_sam3_checkpoint_choices(), {
+                    "default": _SAM3_HF_BACKEND,
+                    "tooltip": "hf:facebook/sam3 = transformers + gated Hugging Face repo "
+                               "(the original path). core:auto = ComfyUI's core SAM3 "
+                               "(SAM3_Detect) on the first *sam3* file in "
+                               "models/checkpoints, sorted (e.g. sam3.1_multiplex_fp16): "
+                               "no HF login, no [sam3] extra. `device` is ignored on "
+                               "that path (ComfyUI manages it)."}),
+                # APPENDED 2026-10-03 (positional rule): an exact core checkpoint
+                # file. A STRING, not a combo, so it can be linked and a saved
+                # graph never fails validation for a file another machine lacks.
+                "sam3_checkpoint_override": ("STRING", {"default": "",
+                    "tooltip": "Exact core SAM3 checkpoint file in models/checkpoints "
+                               "(e.g. sam3.1_multiplex_fp16.safetensors). Non-empty = "
+                               "core path with THIS file, whatever sam3_checkpoint says. "
+                               "Missing file -> empty mask + report naming it."}),
             },
         }
 
+    # Names ONLY sam3_checkpoint, deliberately no **kwargs: ComfyUI's
+    # validate_inputs skips its built-in list/min/max checks for every input
+    # VALIDATE_INPUTS names -- and for ALL inputs if it takes **kwargs. Naming
+    # just this one lets a legacy saved filename through without unguarding
+    # any other widget.
+    @classmethod
+    def VALIDATE_INPUTS(cls, sam3_checkpoint=None):
+        from atlas_camera.comfy.sam3_core_backend import validate_checkpoint_choice
+        return validate_checkpoint_choice(sam3_checkpoint)
+
+    # Widget values only (linked inputs arrive as None). Constant on the HF
+    # path; on the core path it tracks the resolved file + mtime, so a
+    # checkpoint installed after an empty-mask run re-executes on re-queue.
+    @classmethod
+    def IS_CHANGED(cls, sam3_checkpoint=None, sam3_checkpoint_override="", **_):
+        from atlas_camera.comfy.sam3_core_backend import checkpoint_cache_token
+        return checkpoint_cache_token(sam3_checkpoint, sam3_checkpoint_override)
+
     def segment(self, image, concepts="sky", confidence_threshold=0.5, device="auto",
-                output_mode="merged", max_instances=0, concepts_extra="", **_extra):
+                output_mode="merged", max_instances=0, concepts_extra="",
+                sam3_checkpoint=None, sam3_checkpoint_override="", **_extra):
         extra = (concepts_extra or "").strip()
         if extra:
             concepts = f"{concepts}, {extra}" if (concepts or "").strip() else extra
+        from atlas_camera.comfy.sam3_core_backend import wants_core
+        if wants_core(sam3_checkpoint, sam3_checkpoint_override):
+            return self._segment_core(image, concepts, confidence_threshold,
+                                      output_mode, max_instances, sam3_checkpoint,
+                                      sam3_checkpoint_override)
         from atlas_camera.inference.sam3_segmenter import (
             DEFAULT_SAM3_MODEL, Sam3GatedRepoError, sam3_concept_mask,
             sam3_instance_masks)
@@ -394,6 +451,58 @@ class AtlasSAM3Mask:
         else:
             report = f"NO MATCH for '{concepts}' — mask is empty ({DEFAULT_SAM3_MODEL})."
         return (mask, report)
+
+    def _segment_core(self, image, concepts, confidence_threshold, output_mode,
+                      max_instances, choice, override=""):
+        """Same outputs and report shape as the HF path, via core SAM3_Detect.
+
+        Failure contract (mirrors the HF path): a MISSING
+        checkpoint is a per-machine install gap -> empty mask + a report
+        naming the file (as the HF gated repo is). ANY other failure -- load
+        error, OOM, core API drift -- RAISES with the checkpoint named, never
+        a silent empty mask that a downstream sky card would build on.
+        """
+        import numpy as np
+
+        from atlas_camera.comfy.sam3_core_backend import (
+            Sam3CheckpointMissing, core_checkpoint_label, core_sam3_instances,
+            resolve_core_checkpoint)
+        torch = _require_torch()
+        h, w = int(image.shape[1]), int(image.shape[2])
+        empty = torch.zeros((1, h, w), dtype=torch.float32)
+        try:
+            ckpt_name = resolve_core_checkpoint(choice, override)
+        except Sam3CheckpointMissing as exc:
+            return (empty, f"core SAM3 checkpoint MISSING — {exc}. Mask is empty; "
+                           f"put the file in models/checkpoints or use hf:facebook/sam3.")
+        label = core_checkpoint_label(choice, override, ckpt_name)
+        try:
+            instances, matched = core_sam3_instances(
+                image, concepts, ckpt_name=ckpt_name,
+                confidence_threshold=float(confidence_threshold))
+        except Exception as exc:
+            msg = f"core SAM3 ({ckpt_name}) FAILED — {type(exc).__name__}: {exc}"
+            if _is_oom(exc):
+                # Keep the OOM's type so ComfyUI's handler still recognises it
+                # (and unloads models); name the checkpoint as a note.
+                if hasattr(exc, "add_note"):   # py>=3.11
+                    exc.add_note(msg)
+                raise
+            raise RuntimeError(msg) from exc
+        ckpt_name = label
+        if not instances:
+            return (empty, f"NO MATCH for '{concepts}' — mask is empty ({ckpt_name}).")
+        if str(output_mode) == "separate":
+            if int(max_instances) > 0:
+                instances = instances[: int(max_instances)]
+            stack = torch.from_numpy(np.stack(instances).astype("float32"))
+            sizes = ", ".join(f"{float(m.mean()):.1%}" for m in instances[:8])
+            return (stack, f"matched {sorted(set(matched))} -> {len(instances)} "
+                           f"instance(s), largest first [{sizes}] ({ckpt_name})")
+        union = np.any(np.stack(instances), axis=0)
+        mask = torch.from_numpy(union.astype("float32")).unsqueeze(0)
+        return (mask, f"matched {sorted(set(matched))} -> {float(union.mean()):.1%} "
+                      f"of frame ({ckpt_name})")
 
 
 def _align_span(lo: int, hi: int, limit: int, mult: int) -> tuple[int, int]:
@@ -1413,7 +1522,12 @@ class AtlasCleanPlateLayer:
                     plate_np0 = np.asarray(
                         PILImage.fromarray(plate_np0.astype("uint8")).resize(
                             (setup.width, setup.height)), dtype=np.float32)
-                plate_padded = np.pad(plate_np0, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+                from atlas_camera.core.mask_ops import smear_outpaint_ring
+                # Edge replication alone reads as stripes across a wide ring
+                # (measured 5.7% column ripple at 1024 px); smear along the
+                # frame edge, widening with distance. Real pixels untouched.
+                plate_padded = smear_outpaint_ring(
+                    np.pad(plate_np0, ((pad, pad), (pad, pad), (0, 0)), mode="edge"), pad)
                 PILImage = _require_pil()
                 pil = PILImage.fromarray(plate_padded.clip(0, 255).astype("uint8"), mode="RGB")
             else:
@@ -1816,7 +1930,8 @@ class AtlasPlateLayer:
         mask_b64 = None
         if mask is not None:
             try:
-                h = int(getattr(plate_image, "shape", [0, 0, 0])[1]); w = int(plate_image.shape[2])
+                h = int(getattr(plate_image, "shape", [0, 0, 0])[1])
+                w = int(plate_image.shape[2])
                 m = _resolve_exclude_mask(mask, h, w)
                 mask_b64 = _mask_to_b64_png(m) or None
             except Exception:  # noqa: BLE001
@@ -2043,7 +2158,9 @@ class AtlasSkyDomeLayer:
                 size_pad = min(size_pad, max(Hp, Wp) // 2)
                 pad += size_pad
         if pad:
-            plate_np = np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            from atlas_camera.core.mask_ops import smear_outpaint_ring
+            plate_np = smear_outpaint_ring(
+                np.pad(plate_np, ((pad, pad), (pad, pad), (0, 0)), mode="edge"), pad)
             m = np.pad(m, pad, mode="edge")
             cx_p += pad
             cy_p += pad

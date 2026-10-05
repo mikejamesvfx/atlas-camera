@@ -205,3 +205,70 @@ def test_a_solve_with_no_source_still_says_none_recorded():
     assert sh.status == SCALE_STATUS_UNKNOWN
     assert sh.scale_source is None
     assert "No metric-scale provenance" in sh.detail
+
+
+# --- generated object placement grade (the verdict lives here) -------------
+
+def _score(value, ok, threshold=0.5):
+    return {"available": True, "value": value, "pass": ok, "threshold": threshold}
+
+
+def _good_scores():
+    return {"depth_order_agreement": _score(0.95, True),
+            "sky_violation": _score(0.0, True),
+            "silhouette_iou": _score(0.9, True)}
+
+
+def test_generated_grade_ok():
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    grade, issues = generated_object_grade(4.0, 0.02, _good_scores(), ground_scale=4.1,
+                                           coverage_px=500)
+    assert grade == "ok" and issues == []
+
+
+def test_generated_grade_inspect_paths():
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    grade, issues = generated_object_grade(4.0, 0.15, _good_scores())
+    assert grade == "inspect" and "rel_mad 0.150" in issues[0]
+    grade, issues = generated_object_grade(4.0, 0.02, None, ground_scale=5.0)
+    assert grade == "inspect" and "ground-contact" in issues[0]
+    scores = {**_good_scores(), "silhouette_iou": _score(0.3, False)}
+    grade, issues = generated_object_grade(4.0, 0.02, scores)
+    assert grade == "inspect" and "silhouette IoU" in issues[0]
+
+
+def test_generated_grade_refuse_paths():
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    grade, issues = generated_object_grade(None, float("inf"), None,
+                                           registration_note="only 3 pixels")
+    assert grade == "refuse"
+    assert issues == ["no usable scale registration", "only 3 pixels"]
+    assert generated_object_grade(4.0, 0.4, _good_scores())[0] == "refuse"
+    for key in ("depth_order_agreement", "sky_violation"):
+        scores = {**_good_scores(), key: _score(0.4, False)}
+        grade, issues = generated_object_grade(4.0, 0.02, scores)
+        assert grade == "refuse" and key in issues[-1]
+    grade, issues = generated_object_grade(4.0, 0.02, {}, coverage_px=0)
+    assert grade == "refuse" and "covers no pixel" in issues[-1]
+
+
+def test_scale_verdict_is_a_thin_wrapper_over_scene_health():
+    from atlas_camera.core.generated_mesh import scale_verdict
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    for args in [(4.0, 0.02, None), (4.0, 0.15, None), (4.0, 0.02, 5.0), (None, 0.0, None)]:
+        v = scale_verdict(depth_scale=args[0], rel_mad=args[1], ground_scale=args[2])
+        assert (v["grade"], v["issues"]) == generated_object_grade(
+            args[0], args[1], None, ground_scale=args[2])
+        assert v["calibrated"] is False
+
+
+@pytest.mark.parametrize("scale", [float("nan"), float("inf"), 0.0, -2.0, "x"])
+def test_generated_grade_refuses_a_non_finite_or_non_positive_scale(scale):
+    from atlas_camera.core.scene_health import generated_object_grade
+
+    grade, issues = generated_object_grade(scale, 0.02, _good_scores(), coverage_px=500)
+    assert grade == "refuse" and issues[0] == "no usable scale registration"

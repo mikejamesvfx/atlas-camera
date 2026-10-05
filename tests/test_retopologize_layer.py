@@ -224,6 +224,8 @@ def test_boundary_smoothing_keeps_projective_uvs_registered():
 
 
 def test_boundary_smoothing_after_decimate_keeps_uvs_registered():
+    pytest.importorskip("fast_simplification")
+    pytest.importorskip("trimesh")
     from atlas_camera.comfy.nodes import AtlasRetopologizeLayer
 
     solve = _relief_solve()
@@ -265,6 +267,8 @@ def test_smooth_without_intrinsics_says_uvs_are_stale():
     """Intrinsics stay OPTIONAL for smooth (unlike quad/decimate), because a
     caller may smooth a mesh carrying no projection — but silence would imply
     the UVs are still good."""
+    pytest.importorskip("trimesh")
+    pytest.importorskip("scipy")
     import numpy as np
 
     from atlas_camera.core.mesh_retopo import apply_retopo

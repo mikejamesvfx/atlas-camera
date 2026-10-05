@@ -215,6 +215,20 @@ dev = [
     # on `ModuleNotFoundError: No module named 'scipy'`. Depended on directly
     # rather than via trimesh[easy], which pulls considerably more.
     "scipy>=1.10",
+    # Quadric decimation (mesh_retopo.decimate_quadric) needs this as well; the
+    # retopo decimate test skips without it, so declare it to actually run it.
+    "fast-simplification>=0.1",
+]
+# Mesh retopology for AtlasRetopologizeLayer's `smooth` and `decimate` methods:
+# Taubin smoothing (trimesh + scipy) and quadric decimation (fast-simplification).
+# All CPU-only and permissive (trimesh MIT, scipy BSD-3, fast-simplification
+# MIT). Without them those steps do not run and the report or error names the
+# package to install.
+retopo = [
+    "numpy>=1.24",
+    "trimesh>=4.0",
+    "scipy>=1.10",
+    "fast-simplification>=0.1",
 ]
 ui = [
     "fastapi>=0.110",

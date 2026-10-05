@@ -1,0 +1,382 @@
+{
+  "2": {
+    "inputs": {
+      "height_mode": "measure_from_depth",
+      "camera_height_m": 1.6,
+      "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+      "sensor_width_mm": 36,
+      "weights": "pinhole",
+      "device": "auto",
+      "focal_length_mm": 0,
+      "image": [
+        "11",
+        0
+      ],
+      "raw_meta": [
+        "11",
+        2
+      ]
+    },
+    "class_type": "AtlasLearnedSolveFromImage",
+    "_meta": {
+      "title": "2 · CAMERA · learned prior"
+    }
+  },
+  "3": {
+    "inputs": {
+      "depth_model": "Ruicheng/moge-2-vitl-normal",
+      "device": "auto",
+      "moge_resolution_level": 9,
+      "moge_max_side": 0,
+      "moge_checkpoint_path": "",
+      "moge_tile_side": 0,
+      "moge_tile_overlap": 0.25,
+      "moge_report_free_focal": false,
+      "image": [
+        "11",
+        0
+      ],
+      "solve": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "AtlasDepthMap",
+    "_meta": {
+      "title": "3 · DEPTH · one shared metric scale"
+    }
+  },
+  "4": {
+    "inputs": {
+      "relief_grid": 256,
+      "relief_quality": "ultra",
+      "depth_edge_rel": 2,
+      "max_edge_factor": 12,
+      "sky_heuristic": false,
+      "normal_edge_deg": 0,
+      "quad_coherence": false,
+      "sub_quad_boundary": false,
+      "silhouette_matte": false,
+      "soft_visibility": false,
+      "transition_ribbon": true,
+      "ribbon_px": 4,
+      "ribbon_bend": 0.5,
+      "ribbon_adaptive": false,
+      "ribbon_depth_slope": 4,
+      "ribbon_smudge_px": 12,
+      "solve": [
+        "2",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveReliefMesh",
+    "_meta": {
+      "title": "4 · PROJECTION GEOMETRY · torn at silhouettes"
+    }
+  },
+  "6": {
+    "inputs": {
+      "config_label": "sRGB / Standard",
+      "config_path": "",
+      "working_colorspace": "sRGB",
+      "output_colorspace": "ACEScg",
+      "display": "sRGB - Display",
+      "view": "Un-tone-mapped",
+      "display_trim": 1
+    },
+    "class_type": "AtlasViewportControls",
+    "_meta": {
+      "title": "OUTPUT DESK · OCIO metadata"
+    }
+  },
+  "7": {
+    "inputs": {
+      "resolution": 1280,
+      "client_data": "{\"drawn_polygons\":[]}",
+      "preview_expand": 1,
+      "drawn_fill_px": 96,
+      "solve": [
+        "23",
+        0
+      ],
+      "source_image": [
+        "11",
+        0
+      ],
+      "primary_depth": [
+        "3",
+        0
+      ],
+      "controls": [
+        "6",
+        0
+      ],
+      "output_profile": [
+        "6",
+        1
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "6 · VIEWPORT · look through the recovered camera"
+    }
+  },
+  "11": {
+    "inputs": {
+      "file_path": "CameraRaw/DSC_2245.NEF",
+      "undistort": true,
+      "half_size": false,
+      "white_balance": "camera",
+      "exposure_ev": 0,
+      "write_exr": true,
+      "output_dir": "atlas_exports/raw_plates",
+      "colorspace": "ACEScg",
+      "headroom": 6,
+      "choose RAW file to upload": null,
+      "project": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "AtlasLoadRAW",
+    "_meta": {
+      "title": "Atlas Load RAW (NEF/CR2/CR3/RAF/ARW) 📷"
+    }
+  },
+  "12": {
+    "inputs": {
+      "project": "atlas_Branding_01",
+      "shot": "shot010",
+      "colour_mode": "VFX (ACEScg / float)",
+      "project_root": "",
+      "create_tree": true
+    },
+    "class_type": "AtlasProject",
+    "_meta": {
+      "title": "Atlas Project 🎬"
+    }
+  },
+  "17": {
+    "inputs": {
+      "concepts": "sky",
+      "confidence_threshold": 0.5,
+      "device": "auto",
+      "output_mode": "merged",
+      "max_instances": 0,
+      "image": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "AtlasSAM3Mask",
+    "_meta": {
+      "title": "Atlas SAM3 Mask 🪄"
+    }
+  },
+  "23": {
+    "inputs": {
+      "layer": "",
+      "method": "decimate",
+      "target_vertex_count": 20000,
+      "smooth_iterations": 2,
+      "crease_angle": 35,
+      "pure_quad": true,
+      "boundary_smooth_iterations": 12,
+      "rebuild_transition_ribbon": true,
+      "merge_volume_primitives": true,
+      "solve": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "AtlasRetopologizeLayer",
+    "_meta": {
+      "title": "Atlas Retopologize Layer 🔷"
+    }
+  },
+  "24": {
+    "inputs": {
+      "value": [
+        "23",
+        1
+      ]
+    },
+    "class_type": "PrimitiveString",
+    "_meta": {
+      "title": "Text String"
+    }
+  },
+  "26": {
+    "inputs": {
+      "layer": "",
+      "method": "decimate",
+      "target_vertex_count": 20000,
+      "smooth_iterations": 2,
+      "crease_angle": 35,
+      "pure_quad": true,
+      "boundary_smooth_iterations": 12,
+      "rebuild_transition_ribbon": true,
+      "merge_volume_primitives": true,
+      "solve": [
+        "31",
+        0
+      ]
+    },
+    "class_type": "AtlasRetopologizeLayer",
+    "_meta": {
+      "title": "Atlas Retopologize Layer 🔷"
+    }
+  },
+  "27": {
+    "inputs": {
+      "resolution": 1280,
+      "client_data": "{\"drawn_polygons\":[]}",
+      "preview_expand": 1,
+      "drawn_fill_px": 96,
+      "solve": [
+        "26",
+        0
+      ],
+      "source_image": [
+        "11",
+        0
+      ],
+      "controls": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "6 · VIEWPORT · look through the recovered camera"
+    }
+  },
+  "29": {
+    "inputs": {
+      "max_walls": 8,
+      "max_objects": 0,
+      "distance_modes": 2,
+      "ground_anchor": false,
+      "backdrop": "measured_only",
+      "solve": [
+        "2",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveWalls",
+    "_meta": {
+      "title": "Atlas Derive Walls 🧱"
+    }
+  },
+  "30": {
+    "inputs": {
+      "backdrop": "measured_only",
+      "solve": [
+        "2",
+        0
+      ],
+      "depth": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "AtlasDeriveInteriorRoom",
+    "_meta": {
+      "title": "Atlas Derive Interior Room 🛋"
+    }
+  },
+  "31": {
+    "inputs": {
+      "solve_a": [
+        "29",
+        0
+      ],
+      "solve_b": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "AtlasMergeGeometry",
+    "_meta": {
+      "title": "Atlas Merge Geometry 🔀"
+    }
+  },
+  "32": {
+    "inputs": {
+      "config_label": "sRGB / Standard",
+      "config_path": "",
+      "working_colorspace": "sRGB",
+      "output_colorspace": "ACEScg",
+      "display": "sRGB - Display",
+      "view": "Un-tone-mapped",
+      "display_trim": 1
+    },
+    "class_type": "AtlasViewportControls",
+    "_meta": {
+      "title": "OUTPUT DESK · OCIO metadata"
+    }
+  },
+  "33": {
+    "inputs": {
+      "solve_a": [
+        "7",
+        12
+      ],
+      "solve_b": [
+        "27",
+        12
+      ]
+    },
+    "class_type": "AtlasMergeGeometry",
+    "_meta": {
+      "title": "Atlas Merge Geometry 🔀"
+    }
+  },
+  "34": {
+    "inputs": {
+      "resolution": 1280,
+      "client_data": "{\"drawn_polygons\":[]}",
+      "preview_expand": 1,
+      "drawn_fill_px": 96,
+      "solve": [
+        "33",
+        0
+      ],
+      "source_image": [
+        "11",
+        0
+      ],
+      "controls": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "AtlasBlockoutViewport",
+    "_meta": {
+      "title": "6 · VIEWPORT · look through the recovered camera"
+    }
+  },
+  "35": {
+    "inputs": {
+      "config_label": "sRGB / Standard",
+      "config_path": "",
+      "working_colorspace": "sRGB",
+      "output_colorspace": "ACEScg",
+      "display": "sRGB - Display",
+      "view": "Un-tone-mapped",
+      "display_trim": 1
+    },
+    "class_type": "AtlasViewportControls",
+    "_meta": {
+      "title": "OUTPUT DESK · OCIO metadata"
+    }
+  }
+}

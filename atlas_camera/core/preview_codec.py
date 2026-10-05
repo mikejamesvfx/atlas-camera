@@ -65,14 +65,6 @@ def _require_pil() -> Any:
     return Image
 
 
-def _srgb_encode(np: Any, linear: Any) -> Any:
-    """The sRGB EOTF. Linear 0.18 -> ~0.46, which is the whole point."""
-    clipped = np.clip(linear, 0.0, 1.0)
-    return np.where(clipped <= 0.0031308,
-                    clipped * 12.92,
-                    1.055 * np.power(clipped, 1.0 / 2.4) - 0.055)
-
-
 def acescg_to_srgb_display(rgb: Any) -> Any:
     """``(..., 3)`` scene-linear ACEScg -> display-referred sRGB in ``[0, 1]``.
 
@@ -89,7 +81,9 @@ def acescg_to_srgb_display(rgb: Any) -> Any:
         raise ValueError("preview pixels must be finite")
     matrix = np.asarray(ACESCG_TO_SRGB, dtype=np.float64)
     linear = values @ matrix.T
-    return _srgb_encode(np, linear)
+    # The sRGB curve (float64, clipped). Linear 0.18 -> ~0.46, the whole point.
+    from atlas_camera.core.srgb import linear_to_srgb
+    return linear_to_srgb(linear)
 
 
 def encode_preview_png(image: Any, *, colorspace: str = "acescg",

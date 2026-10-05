@@ -156,6 +156,7 @@ def test_routes_and_mcp_wired():
     root = Path(__file__).resolve().parents[1]
     init = (root / "atlas_camera/comfy/__init__.py").read_text(encoding="utf-8")
     assert '"/atlas/agent/brief/{node_id}"' in init and '"/atlas/agent/resume/{node_id}"' in init
+    pytest.importorskip("mcp")  # optional [mcp] extra; the routes above are checked regardless
     from atlas_camera.mcp import server as S
     assert hasattr(S, "atlas_agent_brief") and hasattr(S, "atlas_agent_resume")
 

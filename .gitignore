@@ -65,6 +65,11 @@ examples/review_packages/*
 *.tif
 *.tiff
 !tests/fixtures/*
+# ...including nested ones. `!tests/fixtures/*` only un-ignores direct children,
+# so a fixture that is a whole package tree (scene_0_7_street_min.atlas, vendored
+# from Atlas Scene for the ADR-001 preservation tests) would arrive in a fresh
+# clone with its scene.json and none of the imagery the document points at.
+!tests/fixtures/**
 # Brand/registry assets are hand-authored and must ship (the registry Icon URL
 # points at assets/atlas_camera_icon.png).
 !assets/*.png
@@ -178,3 +183,7 @@ research/blender/
 # lists, prompt packs. Content production, not app code — the same reason
 # docs/brand/ is ignored above.
 atlas_field_guides/
+
+# AtlasSceneTo3D / AtlasMatrixZoneStitch fall back to ./output/ when run outside
+# ComfyUI (CLI, tests without the output folder): GLBs, EXR/PLY sidecars, HDR plates.
+/output/

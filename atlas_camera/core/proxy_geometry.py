@@ -1249,10 +1249,10 @@ def serialize_proxy_geometry(
         flat = [float(v) for row in prim.transform_matrix for v in row]
         # The matte is a str and would otherwise sail through this scalar filter,
         # putting a second full-resolution PNG in the payload beside the copy
-        # lifted to the top level below.
+        # lifted to the top level below. Same for a generated object's texture.
         meta = {k: v for k, v in (prim.metadata or {}).items()
                 if (isinstance(v, (str, int, float, bool)) or v is None)
-                and k != "silhouette_matte_b64"}
+                and k not in ("silhouette_matte_b64", "texture_b64")}
         entry: dict[str, Any] = {
             "name": prim.name,
             "type": prim.primitive_type,
@@ -1273,6 +1273,19 @@ def serialize_proxy_geometry(
             # as edge_risk: an array left in `metadata` is dropped by the scalar
             # filter above.
             entry["ribbon_t"] = md.get("ribbon_t", [])
+            # Generated-object colour (AtlasImportGeneratedMesh): flat sRGB
+            # per-vertex RGB for the side the camera never saw, and the
+            # per-vertex photo_weight choosing photo vs vertex colour. Empty
+            # on every other mesh; the shader's photo_weight default is 1.0,
+            # so ordinary meshes stay photo-painted.
+            entry["vertex_colors"] = md.get("vertex_colors", [])
+            entry["photo_weight"] = md.get("photo_weight", [])
+            # A UV-textured generated object (core ApplyTextureToMesh upstream):
+            # the model's OWN uv layout (top-left convention) and its graded
+            # base-colour texture, which the shader samples for the hidden side
+            # instead of the coarse per-vertex colour. Empty elsewhere.
+            entry["texture_uvs"] = md.get("texture_uvs", [])
+            entry["texture_b64"] = md.get("texture_b64", "")
             # Full-resolution silhouette matte (PNG data URI). Lifted to the top
             # level beside edge_risk because it is the same KIND of thing — a
             # viewport-only coverage field the geometry does not encode — and the

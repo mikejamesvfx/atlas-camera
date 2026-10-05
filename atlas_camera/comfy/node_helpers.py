@@ -30,7 +30,7 @@ WHAT LEFT, and where to look for it now:
 * ``core/normals.py``            normal-field resampling (phase 2)
 * ``raw/metadata.py``            RAW hint precedence + provenance (phase 2)
 * ``comfy/view_prompts.py``      named-view vocabulary + parsers (phase 3)
-* ``comfy/node_reports.py``      report suffixes + atlas_project.json (phase 3)
+* ``comfy/node_reports.py``      report suffixes + atlas_export.json (phase 3)
 * ``comfy/fingerprints.py``      gate identity hashes (phase 3)
 
 Everything moved is RE-EXPORTED below, so ``from ...node_helpers import X``
@@ -223,9 +223,46 @@ def _require_pil():
         ) from exc
 
 
+#: Headroom above 1.0 before an IMAGE reads as scene-referred: float noise and
+#: resampling overshoot on a display-referred plate stay well inside it.
+_SCENE_REFERRED_MAX = 1.01
+
+
+def _scene_referred_input_warning(image_tensor) -> str:
+    """A warning when an IMAGE looks scene-referred (linear / log / HDR), else "".
+
+    Atlas reads IMAGE tensors as display-referred sRGB in 0..1, which is what
+    LoadImage gave for an 8-bit file. Core ComfyUI now loads EXR into
+    LoadImage as raw linear float and ships `ImageColorSpace` (linear Rec.709,
+    HLG, PQ, LogC3, ACEScct). Fed such a tensor, every path through
+    `_image_tensor_to_pil` clips highlights and treats linear values as gamma,
+    so the solve, depth and preview are wrong WITHOUT any error. Values above
+    1.0 or below 0 are the one cheap tell; a linear plate entirely under 1.0
+    cannot be detected, which the message also says.
+    """
+    try:
+        t = image_tensor[0] if getattr(image_tensor, "ndim", 0) == 4 else image_tensor
+        hi = float(t.max())
+        lo = float(t.min())
+    except Exception:  # noqa: BLE001 - never fail a node over a warning
+        return ""
+    if hi <= _SCENE_REFERRED_MAX and lo >= -0.01:
+        return ""
+    return (f"WARNING: input IMAGE spans {lo:.3f}..{hi:.3f}, outside display 0..1 — it looks "
+            "scene-referred (linear EXR, HDR, LogC/ACEScct). Atlas reads IMAGE as display "
+            "sRGB, so highlights are clipped and the solve/depth see the wrong tone curve. "
+            "Convert to sRGB first (core 'Convert Image Color Space' -> sRGB, or "
+            "AtlasLoadPlate with an sRGB display output). A linear plate that stays under "
+            "1.0 is not detectable here.")
+
+
 def _image_tensor_to_pil(image_tensor):
     """Convert ComfyUI IMAGE tensor (1×H×W×3 float32) to a PIL Image (RGB)."""
     PILImage = _require_pil()
+    warning = _scene_referred_input_warning(image_tensor)
+    if warning:
+        import logging
+        logging.getLogger("atlas_camera").warning(warning)
     arr = (image_tensor[0].cpu().numpy() * 255).clip(0, 255).astype("uint8")
     return PILImage.fromarray(arr, mode="RGB")
 
@@ -879,6 +916,8 @@ def build_segmentation_cascade(
     confidence_threshold: float = 0.5,
     have_native_sam3: bool | None = None,
     registry: dict | None = None,
+    sam3_checkpoint: str | None = None,
+    sam3_checkpoint_override: str | None = None,
 ) -> tuple[Any | None, str]:
     """Unified segmentation cascade helper for adapter layer call sites.
 
@@ -889,9 +928,27 @@ def build_segmentation_cascade(
     policy="separate" (AtlasSegmentedSDXLInpaint):
       Native SAM3 (AtlasSAM3Mask, out(0)) -> SAM3Segment (third-party Triton/CUDA, out(1)).
       Returns (instances_ref, path_fired: str)
+
+    ``sam3_checkpoint`` / ``sam3_checkpoint_override`` select the core ComfyUI
+    SAM3 path (``core:auto`` or an exact file); both are forwarded verbatim to
+    the emitted AtlasSAM3Mask, which resolves them at RUN time (missing file
+    -> empty mask + report; any other core failure raises). The core path
+    needs neither transformers nor ``[sam3]``, so it counts as native here.
     """
+    from atlas_camera.comfy.sam3_core_backend import HF_BACKEND, wants_core
+    override = (sam3_checkpoint_override or "").strip()
+    core = wants_core(sam3_checkpoint, override)
     if have_native_sam3 is None:
         have_native_sam3 = _native_sam3_available()
+    # A core ComfyUI SAM3 checkpoint needs neither transformers nor [sam3].
+    have_native_sam3 = bool(have_native_sam3 or core)
+    sam3_extra: dict[str, str] = {}
+    if core:
+        sam3_extra["sam3_checkpoint"] = str(sam3_checkpoint or HF_BACKEND)
+        if override:
+            sam3_extra["sam3_checkpoint_override"] = override
+    sam3_label = (f"AtlasSAM3Mask (core {override or sam3_checkpoint})" if core
+                  else "AtlasSAM3Mask (native)")
     if registry is None:
         registry = _comfy_registry()
 
@@ -905,8 +962,9 @@ def build_segmentation_cascade(
                 device="auto",
                 output_mode="separate",
                 max_instances=int(max_instances),
+                **sam3_extra,
             )
-            return sam.out(0), "AtlasSAM3Mask (native)"
+            return sam.out(0), sam3_label
         else:
             sam = g.node(
                 "SAM3Segment",
@@ -927,7 +985,8 @@ def build_segmentation_cascade(
             return sam.out(1), "SAM3Segment (triton)"
     else:
         if have_native_sam3:
-            return g.node("AtlasSAM3Mask", image=image_ref, concepts=prompt_value).out(0), "AtlasSAM3Mask (native)"
+            return (g.node("AtlasSAM3Mask", image=image_ref, concepts=prompt_value,
+                           **sam3_extra).out(0), sam3_label)
         if "AtlasSemanticMask" in registry:
             return g.node("AtlasSemanticMask", image=image_ref, classes=prompt_value).out(0), "AtlasSemanticMask (SegFormer)"
         return None, "none"
@@ -1176,3 +1235,127 @@ def _project_routed_dir(project, output_dir, lane):
     if project is None:
         return output_dir
     return str(project.subdir(lane, create=True))
+
+
+def output_paths(filename_prefix: str):
+    """``(folder, stem)`` for a file under ComfyUI's output dir, counter-suffixed.
+
+    Inside ComfyUI this is ``folder_paths.get_save_image_path``, and its
+    refusal of a prefix that leaves the output directory PROPAGATES: only an
+    ImportError (not inside ComfyUI) selects the local fallback. Catching
+    everything here once let ``../`` prefixes write anywhere.
+
+    The fallback writes under ``./output`` and enforces the same rule itself:
+    an absolute / anchored prefix, or one whose resolved path escapes
+    ``output/``, is a ValueError naming the prefix.
+    """
+    from pathlib import Path, PureWindowsPath
+
+    prefix = str(filename_prefix or "atlas/scene").strip().replace("\\", "/")
+    try:
+        import folder_paths  # type: ignore[import-not-found]
+    except ImportError:
+        folder_paths = None
+    if folder_paths is not None:
+        folder, filename, counter, _sub, _ = folder_paths.get_save_image_path(
+            prefix, folder_paths.get_output_directory())
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder, _claim_name(folder, filename,
+                                   max(int(counter), _next_counter(folder, filename)))
+
+    rel = Path(prefix)
+    # A drive or UNC prefix (`C:/x`, `C:x`, `//server/share`) is anchored on
+    # Windows only; on POSIX it would quietly land in an `output/C:/` folder. A
+    # workflow saved on one OS runs on the other, so refuse it on both.
+    if rel.is_absolute() or rel.anchor or PureWindowsPath(prefix).anchor:
+        raise ValueError(f"output prefix {filename_prefix!r} is absolute; give a path "
+                         "relative to the output directory")
+    root = Path("output").resolve()
+    target = (root / rel).resolve()
+    if target == root or not target.is_relative_to(root) or rel.name in ("", ".", ".."):
+        raise ValueError(f"output prefix {filename_prefix!r} escapes the output directory")
+    out = Path("output") / rel.parent
+    out.mkdir(parents=True, exist_ok=True)
+    stem = rel.name
+    return out, _claim_name(out, stem, _next_counter(out, stem))
+
+
+def _next_counter(folder, stem: str) -> int:
+    """1 + the highest ``<stem>_NNNNN`` counter already in ``folder`` (any
+    extension), so a GLB, an EXR or a sidecar set never overwrites a sibling."""
+    import os
+    import re
+
+    # Any number of digits (``:05`` grows past 99999), and case-insensitive on
+    # Windows, where ``Hero_00001.glb`` and ``hero_00001.glb`` are one file.
+    flags = re.IGNORECASE if os.name == "nt" else 0
+    pat = re.compile(rf"^{re.escape(stem)}_(\d{{5,}})(?:[._]|$)", flags)
+    nums = [int(m.group(1)) for f in folder.iterdir() if (m := pat.match(f.name))]
+    return 1 + max(nums, default=0)
+
+
+#: Placeholder that claims ``<stem>`` while its files are being written.
+RESERVED_SUFFIX = ".reserved"
+
+
+def _claim_name(folder, base: str, n: int) -> str:
+    """Claim ``<base>_<n>`` (or the next free number) atomically.
+
+    The counter is chosen by scanning the folder, so two processes exporting
+    the same prefix at once could pick the same number and overwrite each
+    other's files. An ``O_EXCL`` placeholder makes the choice exclusive: the
+    loser moves on to the next number. The writer removes it with
+    :func:`release_output_name` once its files exist; a placeholder left by a
+    crash only makes the counter skip that number.
+    """
+    import os
+
+    n = max(1, int(n))
+    while True:
+        name = f"{base}_{n:05}"
+        try:
+            fd = os.open(os.path.join(str(folder), name + RESERVED_SUFFIX),
+                         os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            n += 1
+            continue
+        os.close(fd)
+        return name
+
+
+def release_output_name(folder, stem) -> None:
+    """Drop the placeholder :func:`_claim_name` created (no-op if absent)."""
+    from pathlib import Path
+
+    if folder is None or not stem:
+        return
+    try:
+        (Path(folder) / f"{stem}{RESERVED_SUFFIX}").unlink()
+    except FileNotFoundError:
+        pass
+
+
+def output_root():
+    """ComfyUI's output directory (``./output`` outside ComfyUI), resolved."""
+    from pathlib import Path
+
+    try:
+        import folder_paths  # type: ignore[import-not-found]
+    except ImportError:
+        return Path("output").resolve()
+    return Path(folder_paths.get_output_directory()).resolve()
+
+
+def project_output_paths(project, lane: str, filename_prefix: str):
+    """``(folder, stem)`` inside an AtlasProject shot lane: the delivery
+    location, where a file and its sidecars land TOGETHER. The prefix's last
+    part names the file (sanitised); its directories are ignored -- the lane is
+    the directory. Counter-suffixed like :func:`output_paths`."""
+    from pathlib import Path
+
+    from atlas_camera.exporters.scene_glb import sanitize_name
+
+    folder = Path(project.subdir(lane, create=True))
+    name = sanitize_name(Path(str(filename_prefix or "atlas").replace("\\", "/")).name) or "atlas"
+    return folder, _claim_name(folder, name, _next_counter(folder, name))

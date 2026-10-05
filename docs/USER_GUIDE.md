@@ -674,6 +674,83 @@ from a file, not a screenshot.
 
 Full walkthrough: the [🏗 Staged Master Operator's Guide](https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf).
 
+## What's new (2026-10-02): objects you can walk around, HDR at plate size, the scene in ComfyUI's 3D tools
+
+### Giving an object its back
+
+A relief mesh is a sheet. Orbit far enough and anything standing proud of the
+background shows a stretched smear where its back should be. The Pixal3D lane
+swaps that sheet for a body. The rhythm, in the Pixal3D object research
+workflow under `research/`:
+
+1. `AtlasInput` solves the plate and measures depth.
+2. `AtlasSAM3Mask` picks the **one** object to lift.
+3. The main relief is built *without* it: the object mask, grown a little, OR the
+   sky, into `exclude_mask`. Derive nodes clobber, so this runs before the import.
+4. `AtlasObjectCrop` re-photographs the object through a virtual camera aimed
+   straight at it. Pixal3D assumes its subject sits dead centre of a pinhole lens;
+   the crop makes that true, with the field of view taken from your solve.
+5. Pixal3D builds the mesh, and `AtlasImportGeneratedMesh` puts it back where it
+   belongs, sized against the scene's metric depth and checked against the plate
+   before it is trusted.
+6. An `AtlasCleanPlateLayer` goes behind, for whatever the object used to hide.
+
+What to expect: the front of the object is your photograph, projected; the back
+is Pixal3D's guess, in its own vertex colour. Treat the far side as a sketch to
+paint over, not a measurement. If the import refuses (the object lands in front of
+something it should sit behind, or pokes into the sky), the report says which,
+and that is the cue to fix the mask rather than force it through.
+
+### HDR at plate resolution
+
+LTX-2.5's SDR→HDR LoRA lifts a display-referred plate into scene-linear ACEScg
+with highlights above 1.0, but only at video-model sizes. matrixZone tiles the
+job: `AtlasMatrixZoneSplit` cuts the plate into exact crops, LTX converts each one,
+and `AtlasMatrixZoneStitch` reassembles a single EXR at full size (the HDR still
+research workflow under `research/`).
+
+The trick is getting the zones to agree on brightness. Two neighbours can each
+decide the same sky is a different brightness, and a feather just smears the
+argument. So a quarter-res pass over the whole frame settles the broad brightness
+once, and each zone only adds fine detail. Leave `anchor` on.
+
+Reading the report: every seam is scored on the EXR as written, and anything over
+1.5x the plate's own texture baseline is named. A flagged seam is not automatically
+wrong, since strong structure on the seam line scores high too, so go and look at
+it. The score is taken in short windows along each seam, so a seam that is too
+bright on one half and too dark on the other still fails. (The 8K test plate
+scored 0.88x on the earlier whole-seam score; it is being re-measured.)
+
+**About the vertical lines.** If you have seen faint vertical stripes in an HDR
+plate in Nuke, they come from the conversion model itself, not the zoning, so the
+stitch cleans them up after the fact. The last and strongest pass,
+`detail_from_sdr` (on by default), keeps the model's brightness but takes the
+picture's fine structure from your SDR plate. Blown-out highlights keep the
+model's HDR pixels, which is the whole point of the conversion. The trade: in
+textured areas that were not clipped, the model's own glints and micro-contrast
+give way to the SDR's and read a touch dimmer. Turn it off if you would rather
+have the glints and live with the lines.
+
+Practicalities: the 2x2 grid is the default, about 14.5 minutes cold on 8K with a
+32 GB card; drop to 4x4 on a smaller one. Change only the stitch settings and only
+the stitch re-runs. Every so often the model leaves a soft dark blotch on flat sky;
+paint it out in comp. The EXR is labelled
+for what it is: the highlights are the model's inference, not a bracketed
+exposure, so comp it like a very good grade rather than like photographed HDR.
+`AtlasHDRVertexTransfer` gives a generated object's hidden side the same
+treatment, using the plate's own SDR→HDR curve.
+
+### Sending the scene to ComfyUI's 3D nodes
+
+`AtlasSceneTo3D` packs the layered scene (relief, generated objects, clean-plate
+bands, sky domes) into one GLB with your solve camera, wired straight into Save 3D
+(Advanced) or Preview 3D. Every layer keeps its full-resolution plate, and a float
+EXR rides alongside each one, because a GLB cannot carry EXR. Expect a big file:
+about 235 MB for an 8K plate with six layers was measured before each plate was
+embedded only once, so expect less. Browser viewers struggle past a few
+hundred megabytes, so the node warns at 200 MB and stops at its `max_glb_mb`
+budget, telling you the size it measured.
+
 ### Where to read more
 
 - [🏗 Staged Master Operator's Guide](https://claude.ai/code/artifact/174fccee-3200-43f9-83c5-7875ada0b8cf) — driving the flagship workflow: queue rhythm, autopilot, quality chain, troubleshooting.

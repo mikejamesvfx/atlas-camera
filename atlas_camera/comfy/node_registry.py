@@ -14,6 +14,7 @@ from atlas_camera.comfy.nodes_viewport import (
     AtlasViewportControls,
     AtlasBlockoutViewport,
     AtlasDisocclusionGuide,
+    AtlasGhostPixelMap,
     AtlasStereoRender,
     AtlasDebugReport,
     AtlasLayerPreview,
@@ -26,7 +27,9 @@ from atlas_camera.comfy.nodes_completion import (
     AtlasOcclusionGraph,
     AtlasShootList,
 )
-from atlas_camera.comfy.nodes_qa import AtlasAssessOutput
+from atlas_camera.comfy.nodes_qa import AtlasAdherenceScore, AtlasAssessOutput
+from atlas_camera.comfy.nodes_conditioning import (AtlasConditioningBundle,
+                                                   AtlasWriteConditioningEXR)
 from atlas_camera.comfy.nodes_dynamic import AtlasLoadDynamicPlate
 from atlas_camera.comfy.nodes_fill import (AtlasCameraMovePreset,
                                            AtlasCompositeCrop,
@@ -193,6 +196,9 @@ NODE_CLASS_MAPPINGS = {
     "AtlasVLMScaleCues":          AtlasVLMScaleCues,
     "AtlasAssessImage":           AtlasAssessImage,
     "AtlasAssessOutput":          AtlasAssessOutput,
+    "AtlasConditioningBundle":    AtlasConditioningBundle,
+    "AtlasWriteConditioningEXR":  AtlasWriteConditioningEXR,
+    "AtlasAdherenceScore":        AtlasAdherenceScore,
     "AtlasSolveGate":             AtlasSolveGate,
     "AtlasSceneHealthGate":       AtlasSceneHealthGate,
     "AtlasGravityOverride":       AtlasGravityOverride,
@@ -226,6 +232,7 @@ NODE_CLASS_MAPPINGS = {
     "AtlasViewportControls":      AtlasViewportControls,
     "AtlasBlockoutViewport":      AtlasBlockoutViewport,
     "AtlasDisocclusionGuide":     AtlasDisocclusionGuide,
+    "AtlasGhostPixelMap":         AtlasGhostPixelMap,
     "AtlasStereoRender":          AtlasStereoRender,
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   AtlasExportCameraPathUSD,
@@ -314,6 +321,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasReferenceScaleSolve":   "Atlas Reference-Object Scale 📏",
     "AtlasAssessImage":           "Atlas Assess Image 🧭",
     "AtlasAssessOutput":          "Atlas Assess Output 🧪",
+    "AtlasConditioningBundle":    "Atlas Conditioning Bundle 🎛",
+    "AtlasWriteConditioningEXR":  "Atlas Conditioning EXR 💾",
+    "AtlasAdherenceScore":        "Atlas Adherence Score 📐",
     "AtlasSolveGate":             "Atlas Solve Gate ✅",
     "AtlasSceneHealthGate":       "Atlas Scene Health Gate 🩺",
     "AtlasGravityOverride":       "Atlas Gravity Override 🎚",
@@ -348,6 +358,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "AtlasViewportControls":      "Atlas Output Desk 🎛",
     "AtlasBlockoutViewport":      "Atlas Viewport 🧊",
     "AtlasDisocclusionGuide":     "Atlas Disocclusion Guide 🟣",
+    "AtlasGhostPixelMap":         "Atlas Ghost Pixels 👻",
     "AtlasStereoRender":          "Atlas Stereo Render 👓",
     # Track 3 — camera path animation
     "AtlasExportCameraPathUSD":   "Atlas Export Camera Path (USD) 🎥",
@@ -445,6 +456,33 @@ NODE_DISPLAY_NAME_MAPPINGS["AtlasCameraMovePreset"] = "Atlas Camera Move Preset 
 # Qwen ROI loop); pairs with AtlasCropROI's handle.
 NODE_CLASS_MAPPINGS["AtlasCropSourcePhoto"] = AtlasCropSourcePhoto
 NODE_DISPLAY_NAME_MAPPINGS["AtlasCropSourcePhoto"] = "Atlas Crop Source Photo 📷✂️"
+# 2026-10-02: generated object meshes -- a pixel-aligned image-to-3D model
+# (core Pixal3D) gives a foreground object its hidden sides. The crop node
+# re-renders the object for the model's centred pinhole with the SOLVE's FOV;
+# the import node maps the mesh back, measures its scale, gates it, appends.
+from atlas_camera.comfy.nodes_object_mesh import AtlasImportGeneratedMesh, AtlasObjectCrop
+
+NODE_CLASS_MAPPINGS["AtlasObjectCrop"] = AtlasObjectCrop
+NODE_CLASS_MAPPINGS["AtlasImportGeneratedMesh"] = AtlasImportGeneratedMesh
+NODE_DISPLAY_NAME_MAPPINGS["AtlasObjectCrop"] = "Atlas Object Crop 🎯"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasImportGeneratedMesh"] = "Atlas Import Generated Mesh 🧩"
+# 2026-10-02: the layered scene as ComfyUI's native 3D sockets (Save 3D Advanced).
+from atlas_camera.comfy.nodes_scene3d import AtlasSceneTo3D
+
+NODE_CLASS_MAPPINGS["AtlasSceneTo3D"] = AtlasSceneTo3D
+NODE_DISPLAY_NAME_MAPPINGS["AtlasSceneTo3D"] = "Atlas Scene To 3D 🧊"
+# 2026-10-02: matrixZone SDR->HDR - full-resolution HDR plates from LTX-2.5.
+from atlas_camera.comfy.nodes_matrixzone import AtlasMatrixZoneSplit, AtlasMatrixZoneStitch
+
+NODE_CLASS_MAPPINGS["AtlasMatrixZoneSplit"] = AtlasMatrixZoneSplit
+NODE_CLASS_MAPPINGS["AtlasMatrixZoneStitch"] = AtlasMatrixZoneStitch
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneSplit"] = "Atlas matrixZone Split 🔲"
+NODE_DISPLAY_NAME_MAPPINGS["AtlasMatrixZoneStitch"] = "Atlas matrixZone Stitch 🔲"
+# 2026-10-02: the plate's SDR->HDR tone curve onto generated hidden-side vertex colour.
+from atlas_camera.comfy.nodes_object_mesh import AtlasHDRVertexTransfer
+
+NODE_CLASS_MAPPINGS["AtlasHDRVertexTransfer"] = AtlasHDRVertexTransfer
+NODE_DISPLAY_NAME_MAPPINGS["AtlasHDRVertexTransfer"] = "Atlas HDR Vertex Transfer 🌗"
 
 # Promoted from the experimental tier 2026-08-14 (Dynamic Plates): the CLI half
 # (`python -m atlas_camera.dynamic`) was never gated, so gating only the VIEWER
@@ -639,6 +677,7 @@ _MENU_FOLDERS = {
         "AtlasAddPatchView", "AtlasSolvePatchViews", "AtlasPlanarHolePatch",
         "AtlasPathGuidedHoleRepair", "AtlasOcclusionGraph", "AtlasLayerPlan",
         "AtlasShootList", "AtlasDisocclusionGuide", "AtlasSolveBurstPatchCrops",
+        "AtlasGhostPixelMap",
     ),
     "Atlas/07 \u00b7 Clean Plate & Inpaint": (
         "AtlasCleanPlateLayer", "AtlasCleanPlateStack", "AtlasPlateLayer", "AtlasLayerPreview",
@@ -649,10 +688,11 @@ _MENU_FOLDERS = {
         "AtlasBlockoutViewport", "AtlasViewportControls", "AtlasVPVisualization",
         "AtlasStereoRender", "AtlasMoveBudget", "AtlasDebugReport", "AtlasGrade",
         "AtlasDeband", "AtlasDefocus", "AtlasApplyLUT",
+        "AtlasConditioningBundle",
     ),
     "Atlas/09 \u00b7 QA & Gates": (
         "AtlasAssessImage", "AtlasAssessOutput", "AtlasSceneHealthGate",
-        "AtlasSolveGate",
+        "AtlasSolveGate", "AtlasAdherenceScore",
     ),
     "Atlas/10 \u00b7 Export": (
         "AtlasExportNuke", "AtlasExportNukeLayers", "AtlasExportMayaLayers",
@@ -660,7 +700,8 @@ _MENU_FOLDERS = {
         "AtlasExportCameraPathUSD", "AtlasExportReliefMesh", "AtlasExportPlateEXR",
         "AtlasExportReviewPackage", "AtlasExportSolveJSON",
         "AtlasExportScenePackage", "AtlasExportPlateHandoff",
-        "AtlasDirectorTake",
+        "AtlasDirectorTake", "AtlasWriteConditioningEXR",
+        "AtlasSceneTo3D", "AtlasMatrixZoneSplit", "AtlasMatrixZoneStitch",
     ),
     "Atlas/11 · Evidence Plate": (
         "AtlasOpenRealPlate", "AtlasReadLockedPlatePlan", "AtlasRecordPlateAttempt",
@@ -683,6 +724,7 @@ _MENU_FOLDERS = {
         "AtlasCropROI", "AtlasCompositeCrop", "AtlasCameraMovePreset",
         "AtlasFillOccluded",
         "AtlasCropSourcePhoto",
+        "AtlasObjectCrop", "AtlasImportGeneratedMesh", "AtlasHDRVertexTransfer",
         "AtlasLoadHiddenVolume", "AtlasBlenderMassing", "AtlasBlenderImportMeshes",
         "AtlasAgentHandoff",
     ),

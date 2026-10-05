@@ -927,3 +927,79 @@ def test_move_preset_orbit_matches_js_rotation_algebra():
                     pivot[2] + rot[2] * k)
         assert max(abs(x - y) for x, y in zip(end, expected)) < 1e-9, move
         assert delta[0] == sign * 15.0 and delta[2] == 0.85
+
+
+# --- Generated-object photo/vertex-colour split (atlas_blockout.js <-> generated_mesh.py)
+
+
+def test_photo_weight_split_mirrors_python():
+    """photo_weight is decided per vertex in Python and split in the shader;
+    a hand-slip would paint the photo onto the hidden side (or the vertex
+    colour over what the camera saw). The default must stay 1.0: every
+    ordinary mesh uploads it, and anything lower would hand ordinary meshes
+    to the vertex-colour path.
+    """
+    from atlas_camera.core.generated_mesh import PHOTO_WEIGHT_SPLIT
+
+    src = _read("atlas_blockout.js")
+    found = re.search(r"const PHOTO_WEIGHT_SPLIT = ([0-9.]+);", src)
+    assert found, "PHOTO_WEIGHT_SPLIT missing from atlas_blockout.js"
+    assert float(found.group(1)) == pytest.approx(PHOTO_WEIGHT_SPLIT)
+    default = re.search(r"const PHOTO_WEIGHT_DEFAULT = ([0-9.]+);", src)
+    assert default and float(default.group(1)) == 1.0
+    # The has-colour flag must not be satisfiable by WebGL's missing-attribute
+    # default (0,0,0,1).
+    assert "vAtlasVertexColor.a > 1.5" in src
+
+
+def test_vertex_colour_buffers_only_when_the_mesh_has_colours():
+    """A relief mesh must not pay count*5 floats of constant fallback.
+    Without the buffers the shader reads the material's defaultAttributeValues,
+    which must keep it on the photo-only path (alpha well below the 1.5
+    has-colour flag) with the photo kept (photo_weight PHOTO_WEIGHT_DEFAULT)."""
+    src = _read("atlas_blockout.js")
+    nvc = re.search(r"const ATLAS_NO_VERTEX_COLOR = \[([^\]]*)\];", src)
+    assert nvc, "ATLAS_NO_VERTEX_COLOR missing from atlas_blockout.js"
+    values = [float(v) for v in nvc.group(1).split(",")]
+    assert len(values) == 4 and values[3] < 1.5
+    assert "atlasVertexColor: ATLAS_NO_VERTEX_COLOR.slice()," in src
+    assert "atlasPhotoWeight: [PHOTO_WEIGHT_DEFAULT]," in src
+    # Merged INTO three.js's own defaults (color/uv/uv1), never replacing them.
+    assert "...mat.defaultAttributeValues," in src
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_attach_vertex_colour_allocates_only_for_coloured_meshes():
+    src = _read("atlas_blockout.js")
+    fn = re.search(r"(function attachAtlasVertexColor\(geo, entry\) \{.*?\n\})",
+                   src, re.DOTALL)
+    assert fn, "attachAtlasVertexColor not found"
+    script = (
+        "const PHOTO_WEIGHT_DEFAULT = 1.0;\n"
+        "const THREE = {BufferAttribute: function (a, n) { this.array = a; this.itemSize = n; }};\n"
+        "function geo(count, extra) { const g = {attributes: Object.assign("
+        "{position: {count}}, extra || {})};"
+        " g.setAttribute = (k, v) => { g.attributes[k] = v; };"
+        " g.deleteAttribute = (k) => { delete g.attributes[k]; }; return g; }\n"
+        + fn.group(1) + "\n"
+        "const plain = attachAtlasVertexColor(geo(3), {});\n"
+        "const stale = attachAtlasVertexColor(geo(3, {atlasVertexColor: 1,"
+        " atlasPhotoWeight: 1}), {vertex_colors: [0, 0]});\n"
+        "const vc = attachAtlasVertexColor(geo(2), {vertex_colors: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]});\n"
+        "const vcpw = attachAtlasVertexColor(geo(2), {vertex_colors: [0, 0, 0, 1, 1, 1],"
+        " photo_weight: [0.25, 0.75]});\n"
+        "console.log(JSON.stringify({"
+        "plain: Object.keys(plain.attributes), stale: Object.keys(stale.attributes),"
+        " vc: Array.from(vc.attributes.atlasVertexColor.array),"
+        " vcpw: Array.from(vc.attributes.atlasPhotoWeight.array),"
+        " pw: Array.from(vcpw.attributes.atlasPhotoWeight.array)}));"
+    )
+    result = subprocess.run(["node", "-e", script], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    got = json.loads(result.stdout)
+    assert got["plain"] == ["position"]
+    assert got["stale"] == ["position"]
+    assert got["vc"] == pytest.approx([0.1, 0.2, 0.3, 2.0, 0.4, 0.5, 0.6, 2.0])
+    assert got["vcpw"] == [1.0, 1.0]
+    assert got["pw"] == [0.25, 0.75]

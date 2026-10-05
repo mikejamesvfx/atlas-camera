@@ -1,0 +1,463 @@
+{
+  "scene_id": "street_min",
+  "name": "Street (minimal fixture)",
+  "schema_version": "0.7",
+  "scale": null,
+  "scene_scale": null,
+  "coordinate_system": "right_handed_y_up_camera_to_world",
+  "camera": {
+    "width": 4000,
+    "height": 3000,
+    "focal_length_mm": 35.0,
+    "sensor_width_mm": 36.0,
+    "sensor_height_mm": 24.0,
+    "fx": 3888.0,
+    "fy": 3888.0,
+    "cx": 2000.0,
+    "cy": 1500.0,
+    "position": [
+      0.0,
+      1.6,
+      6.0
+    ],
+    "rotation": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "near_clip": 0.1,
+    "far_clip": 1000.0,
+    "coordinate_system": "right_handed_y_up_camera_to_world",
+    "lens_model": null,
+    "distortion": null,
+    "plate_path": "imagery/preview.jpg",
+    "observation_id": "observation_001",
+    "capture_location": null,
+    "capture_time": null
+  },
+  "environment": {
+    "source": "plate",
+    "atmosphere": null,
+    "sun": {
+      "mode": "metadata",
+      "derived": null,
+      "offset": {
+        "azimuth_deg": 0.0,
+        "elevation_deg": 0.0
+      },
+      "manual": null
+    },
+    "hdri": null,
+    "sky_mask": null,
+    "provenance": []
+  },
+  "entities": [
+    {
+      "entity_id": "observed",
+      "name": "Observed",
+      "kind": "GROUP",
+      "parent_id": null,
+      "placement": {
+        "transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "source_hypothesis_id": null,
+        "revision": 0
+      },
+      "hypotheses": [],
+      "geometry": null,
+      "material": {},
+      "visible": true,
+      "observation_state": "OBSERVED",
+      "semantic_class": null,
+      "confidence": null,
+      "visibility": null,
+      "source_observation_id": null,
+      "provenance": [],
+      "metadata": {},
+      "created_at": "2026-08-21T05:09:51.093939+00:00"
+    },
+    {
+      "entity_id": "inferred",
+      "name": "Inferred",
+      "kind": "GROUP",
+      "parent_id": null,
+      "placement": {
+        "transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "source_hypothesis_id": null,
+        "revision": 0
+      },
+      "hypotheses": [],
+      "geometry": null,
+      "material": {},
+      "visible": true,
+      "observation_state": "INFERRED",
+      "semantic_class": null,
+      "confidence": null,
+      "visibility": null,
+      "source_observation_id": null,
+      "provenance": [],
+      "metadata": {},
+      "created_at": "2026-08-21T05:09:51.093939+00:00"
+    },
+    {
+      "entity_id": "ground",
+      "name": "Ground",
+      "kind": "MESH",
+      "parent_id": "observed",
+      "placement": {
+        "transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            10.0,
+            1.0,
+            10.0
+          ]
+        },
+        "source_hypothesis_id": null,
+        "revision": 0
+      },
+      "hypotheses": [],
+      "geometry": null,
+      "material": {},
+      "visible": true,
+      "observation_state": "OBSERVED",
+      "semantic_class": "ground.road",
+      "confidence": 0.91,
+      "visibility": 0.99,
+      "source_observation_id": "observation_001",
+      "provenance": [],
+      "metadata": {
+        "primitive": "plane",
+        "primitive_size": [
+          10,
+          1,
+          10
+        ]
+      },
+      "created_at": "2026-08-21T05:09:51.093939+00:00"
+    },
+    {
+      "entity_id": "building_014",
+      "name": "Building_014",
+      "kind": "MESH",
+      "parent_id": "observed",
+      "placement": {
+        "transform": {
+          "position": [
+            -2.0,
+            1.0,
+            -3.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            3.0,
+            2.0,
+            3.0
+          ]
+        },
+        "source_hypothesis_id": "hypothesis_B",
+        "revision": 0
+      },
+      "hypotheses": [
+        {
+          "hypothesis_id": "hypothesis_A",
+          "transform": {
+            "position": [
+              -2.4,
+              1.0,
+              -3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "provenance": "SOLVED",
+          "method": "multiview",
+          "confidence": 0.61
+        },
+        {
+          "hypothesis_id": "hypothesis_B",
+          "transform": {
+            "position": [
+              -2.0,
+              1.0,
+              -3.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "provenance": "SOLVED",
+          "method": "multiview",
+          "confidence": 0.82
+        }
+      ],
+      "geometry": null,
+      "material": {},
+      "visible": true,
+      "observation_state": "SOLVED",
+      "semantic_class": "building.wall",
+      "confidence": 0.82,
+      "visibility": 0.94,
+      "source_observation_id": "observation_001",
+      "provenance": [],
+      "metadata": {
+        "primitive": "box"
+      },
+      "created_at": "2026-08-21T05:09:51.093939+00:00"
+    },
+    {
+      "entity_id": "facade_guess",
+      "name": "Facade_guess",
+      "kind": "MESH",
+      "parent_id": "inferred",
+      "placement": {
+        "transform": {
+          "position": [
+            2.5,
+            1.0,
+            -4.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            2.0,
+            2.0,
+            1.0
+          ]
+        },
+        "source_hypothesis_id": null,
+        "revision": 0
+      },
+      "hypotheses": [],
+      "geometry": null,
+      "material": {},
+      "visible": true,
+      "observation_state": "INFERRED",
+      "semantic_class": "building.facade",
+      "confidence": null,
+      "visibility": null,
+      "source_observation_id": null,
+      "provenance": [],
+      "metadata": {
+        "primitive": "box"
+      },
+      "created_at": "2026-08-21T05:09:51.093939+00:00"
+    }
+  ],
+  "planes": [
+    {
+      "plane_id": "plane_ground",
+      "label": "projection_plane_01",
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "offset_m": 0.0,
+      "inliers": 52318,
+      "provenance": "SOLVED",
+      "method": "extract_planes_ransac",
+      "completion_policy": "none",
+      "confidence": null,
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.871230+00:00"
+    },
+    {
+      "plane_id": "plane_building",
+      "label": "projection_plane_02",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "offset_m": -8.4,
+      "inliers": 21044,
+      "provenance": "SOLVED",
+      "method": "extract_planes_ransac",
+      "completion_policy": "none",
+      "confidence": null,
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.878403+00:00"
+    },
+    {
+      "plane_id": "plane_facade",
+      "label": "projection_plane_03",
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "offset_m": -12.1,
+      "inliers": null,
+      "provenance": "INFERRED",
+      "method": "extract_planes_ransac",
+      "completion_policy": "none",
+      "confidence": null,
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.885529+00:00"
+    }
+  ],
+  "layers": [
+    {
+      "layer_id": "layer_ground",
+      "plane_id": "plane_ground",
+      "matte_path": "mattes/plane_ground.png",
+      "matte_digest": "c5780698cfc2fe7d0e6fdd97a3da9ebee6d46c54685a1d53c26f14222681302f",
+      "alpha_mode": "straight",
+      "priority": -6.0,
+      "visible": true,
+      "opacity": 1.0,
+      "pixel_count": 115200,
+      "provenance": "SOLVED",
+      "label": "Ground",
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.878403+00:00"
+    },
+    {
+      "layer_id": "layer_building",
+      "plane_id": "plane_building",
+      "matte_path": "mattes/plane_building.png",
+      "matte_digest": "7b77e55cee83b4f6f141daee6ddb4ebb1c59a7533ddd58451da54096742653b5",
+      "alpha_mode": "straight",
+      "priority": -18.0,
+      "visible": true,
+      "opacity": 1.0,
+      "pixel_count": 36381,
+      "provenance": "SOLVED",
+      "label": "Building face",
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.884990+00:00"
+    },
+    {
+      "layer_id": "layer_facade",
+      "plane_id": "plane_facade",
+      "matte_path": "mattes/plane_facade.png",
+      "matte_digest": "e385c961ec2f51f8321b7ffb36c3f9de934e16228f9e69544de0938bf5387b8a",
+      "alpha_mode": "straight",
+      "priority": -31.0,
+      "visible": true,
+      "opacity": 1.0,
+      "pixel_count": 0,
+      "provenance": "INFERRED",
+      "label": "Facade (inferred)",
+      "metadata": {},
+      "created_at": "2026-08-21T09:14:23.890557+00:00"
+    }
+  ],
+  "textures": [],
+  "revisions": {
+    "revisions": [
+      {
+        "revision_id": "rev_002",
+        "kind": "geometry",
+        "target_id": "building_014",
+        "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+        "derived_from": null,
+        "actor": "atlas-world",
+        "method": null,
+        "artifact_path": "geometry/rev_002.glb",
+        "created_at": "2026-08-21T07:11:41.968924+00:00"
+      }
+    ],
+    "selected": {
+      "geometry:building_014": "rev_002"
+    }
+  },
+  "derived": [
+    {
+      "artifact_id": "visibility_building_014",
+      "kind": "visibility",
+      "target_id": "building_014",
+      "path": "visibility/building_014.npz",
+      "depends_on": {
+        "geometry:building_014": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "created_at": "2026-08-21T07:11:41.968924+00:00"
+    }
+  ],
+  "source": {},
+  "provenance": [],
+  "metadata": {},
+  "created_at": "2026-08-21T05:09:51.093939+00:00"
+}

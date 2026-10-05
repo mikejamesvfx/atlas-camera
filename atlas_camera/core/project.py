@@ -17,7 +17,65 @@ import os
 from pathlib import Path
 import re
 
+#: The delivery-project record. ADR-005 (atlas-nexus): this name means this file and nothing else.
 PROJECT_MANIFEST = "atlas_project.json"
+#: The record's schema (ADR-005 Amendment 1). A STRING, so it can never be confused with the export
+#: manifest's integer ``schema``. Records written before the amendment carry none and are upgraded.
+PROJECT_RECORD_SCHEMA = "atlas-project/1"
+SUPPORTED_PROJECT_RECORD_SCHEMAS = frozenset({PROJECT_RECORD_SCHEMA})
+#: The standalone workbench's session file (``atlas_camera.ui.project``). Named here, in core, so the
+#: delivery/workbench boundary is enforced from one definition without core importing the UI.
+WORKBENCH_SESSION_FILENAME = "atlas_workbench_session.json"
+#: Keys the delivery record owns. Everything else in an existing record is preserved verbatim.
+_RECORD_OWNED_KEYS = ("schema", "atlas_version", "project", "colour", "shots", "created", "updated")
+
+
+class ForeignProjectFileError(ValueError):
+    """``atlas_project.json`` exists at the project level but is not a delivery-project record.
+
+    Before ADR-005 two other Camera files used the name: the per-export reproducibility manifest
+    (now ``atlas_export.json``) and the workbench session (now ``atlas_workbench_session.json``).
+    A legacy one of those, or an unreadable file, is refused rather than overwritten.
+    """
+
+
+def is_project_record(data: object) -> bool:
+    """True for a delivery-project record, by content: never an export manifest (integer
+    ``schema``), a workbench session (``project_dir`` / ``source_image``), or a document whose string
+    ``schema`` belongs to another family. A record from a NEWER Atlas (``atlas-project/2``) is still a
+    project record -- it is recognised, and :meth:`AtlasProject.write_manifest` refuses to modify it."""
+    if not isinstance(data, dict):
+        return False
+    schema = data.get("schema")
+    if isinstance(schema, bool) or isinstance(schema, int):
+        return False
+    if schema is not None and not (isinstance(schema, str) and schema.startswith("atlas-project/")):
+        return False
+    if ("project_dir" in data or "source_image" in data) and not ("shots" in data or "colour" in data):
+        return False
+    return True
+
+
+def find_delivery_project_root(path: str | os.PathLike) -> Path | None:
+    """The nearest directory, from ``path`` upwards, that holds a delivery-project record.
+
+    Used to keep the workbench out of delivery trees (ADR-005 Amendment 1). An ``atlas_project.json``
+    that cannot be read counts as a delivery record: since ADR-005 that name belongs to delivery
+    projects, so an unreadable one is refused rather than assumed harmless. A legacy workbench session
+    or export manifest under the old name does not count.
+    """
+    here = Path(path).expanduser().resolve()
+    for directory in (here, *here.parents):
+        candidate = directory / PROJECT_MANIFEST
+        if not candidate.is_file():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return directory
+        if is_project_record(data):
+            return directory
+    return None
 
 # --- Colour modes -----------------------------------------------------------
 # The one explicit choice that separates the two audiences. Default is the
@@ -164,17 +222,38 @@ class AtlasProject:
         """Write / update ``atlas_project.json`` at the project level: the colour
         policy, the shots seen, and stamps. Makes a project self-describing and
         reproducible. First-write ``created`` is preserved on later updates."""
+        session = self.project_dir / WORKBENCH_SESSION_FILENAME
+        if session.is_file():
+            raise ForeignProjectFileError(
+                f"{self.project_dir} is a workbench session directory ({session.name}); a delivery "
+                f"project cannot live there (ADR-005 Amendment 1); refusing to write its record")
         self.project_dir.mkdir(parents=True, exist_ok=True)
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         data: dict = {}
         if self.manifest_path.is_file():
             try:
                 data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                data = {}
+            except (ValueError, OSError) as exc:
+                raise ForeignProjectFileError(
+                    f"{self.manifest_path} exists but cannot be read ({exc}); refusing to "
+                    f"overwrite it") from exc
+            if not is_project_record(data):
+                raise ForeignProjectFileError(
+                    f"{self.manifest_path} is not a delivery-project record (a pre-ADR-005 export "
+                    f"manifest or workbench session?); refusing to overwrite it")
+            schema = data.get("schema")
+            if schema is not None and schema not in SUPPORTED_PROJECT_RECORD_SCHEMAS:
+                raise ForeignProjectFileError(
+                    f"{self.manifest_path} is a delivery-project record with schema {schema!r}, which "
+                    f"this Atlas does not write; refusing to modify it")
         shots = set(data.get("shots") or [])
         shots.add(self.shot)
+        # Preserve what this writer does not own (ADR-005 Amendment 1): a production, a newer tool or
+        # a person may have added keys, and rebuilding the payload used to delete them.
+        preserved = {k: v for k, v in data.items() if k not in _RECORD_OWNED_KEYS}
         payload = {
+            **preserved,
+            "schema": PROJECT_RECORD_SCHEMA,
             "atlas_version": data.get("atlas_version") or _atlas_version(),
             "project": self.project,
             "colour": self.colour.to_dict(),

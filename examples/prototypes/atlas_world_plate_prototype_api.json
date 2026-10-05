@@ -32,7 +32,9 @@
         0
       ],
       "max_instances": 0,
-      "output_mode": "merged"
+      "output_mode": "merged",
+      "sam3_checkpoint": "hf:facebook/sam3",
+      "sam3_checkpoint_override": ""
     }
   },
   "14": {
@@ -140,7 +142,9 @@
         0
       ],
       "max_instances": 0,
-      "output_mode": "merged"
+      "output_mode": "merged",
+      "sam3_checkpoint": "hf:facebook/sam3",
+      "sam3_checkpoint_override": ""
     }
   },
   "4": {

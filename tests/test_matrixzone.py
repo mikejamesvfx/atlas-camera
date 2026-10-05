@@ -1,0 +1,475 @@
+"""matrixZone for a still plate: bridge-parity plan, exact split/stitch, radiance anchor."""
+
+import numpy as np
+import pytest
+
+from atlas_camera.core.matrixzone import (
+    crop_zones,
+    frames_8k1,
+    lowpass,
+    pad_to_render,
+    plan_still,
+    resize_bilinear,
+    seam_metrics,
+    seam_step_test,
+    stitch,
+    to_log2,
+    zones_as_frames,
+)
+
+
+def test_plan_matches_bridge_uhd_2x2():
+    # atlas-unreal Docs/ATLAS_MATRIXZONE.md rev 3, "UHD 8K, camera-corrected plate".
+    p = plan_still(7680, 4320, (2, 2))
+    assert (p["render"]["width"], p["render"]["height"]) == (7680, 4352)
+    assert p["render"]["plateOrigin"] == [0, 16]
+    assert p["zone_size"] == [3904, 2240]
+    assert p["overlap"]["px"] == [128, 128]
+    assert p["global"]["size"] == [1920, 1088]
+    assert [z["plateRect"] for z in p["zones"]] == [
+        [0, 16, 3840, 2160], [3840, 16, 3840, 2160],
+        [0, 2176, 3840, 2160], [3840, 2176, 3840, 2160]]
+
+
+def test_plan_4x4_is_the_1080p_tier():
+    p = plan_still(7680, 4320, (4, 4))
+    zw, zh = p["zone_size"]
+    assert zw % 64 == 0 and zh % 64 == 0 and zw <= 2048 and zh <= 1152
+    assert min(p["overlap"]["px"]) >= 64
+
+
+def test_render_and_zones_are_clean_and_tile():
+    p = plan_still(7680, 4512, (3, 2))
+    rw, rh = p["render"]["width"], p["render"]["height"]
+    assert rw % 128 == 0 and rh % 128 == 0
+    cover = np.zeros((rh, rw), bool)
+    for z in p["zones"]:
+        x, y, w, h = z["renderRect"]
+        assert w % 64 == 0 and h % 64 == 0 and x >= 0 and y >= 0
+        assert x + w <= rw and y + h <= rh
+        cover[y:y + h, x:x + w] = True
+    assert cover.all()
+
+
+def test_tall_grid_interior_zones_stay_inside_the_render():
+    # Repro: centred interior zones fell off the canvas (z10 y=-3, z60 ended 2179 > 2176).
+    p = plan_still(3840, 2160, (1, 8), overlap_min=(512, 512))
+    rh = p["render"]["height"]
+    rects = {z["id"]: z["renderRect"] for z in p["zones"]}
+    assert rects["z10"][1] == 0
+    assert rects["z60"][1] + rects["z60"][3] <= rh
+
+
+_SWEEP_SIZES = [(7680, 4320), (7680, 4512), (3840, 2160), (1920, 1080), (1100, 620),
+                (1001, 777), (4096, 2160), (640, 480), (2160, 3840)]
+
+
+@pytest.mark.parametrize("size", _SWEEP_SIZES)
+def test_plan_sweep_every_zone_inside_and_every_cell_covered(size):
+    w, h = size
+    checked = 0
+    for cols in range(1, 9):
+        for rows in range(1, 9):
+            for ov in (0, 64, 128, 256, 512):
+                try:
+                    p = plan_still(w, h, (cols, rows), overlap_min=(ov, ov))
+                except ValueError:
+                    continue                      # grid too fine for this plate: refused, fine
+                rw, rh = p["render"]["width"], p["render"]["height"]
+                for z in p["zones"]:
+                    x, y, zw, zh = z["renderRect"]
+                    assert x >= 0 and y >= 0 and x + zw <= rw and y + zh <= rh, (size, cols, rows, ov, z)
+                    px, py, pw, ph = z["plateRect"]
+                    assert x <= px and y <= py and px + pw <= x + zw and py + ph <= y + zh
+                checked += 1
+    assert checked > 0
+
+
+def test_sweep_never_refuses_the_known_good_grids():
+    """The sweep above skips refused plans; pin that the configurations the
+    clamp exists for are clamped, not refused (a regression into a refusal
+    would otherwise pass the sweep vacuously)."""
+    for (w, h), grid, ov in [((3840, 2160), (1, 8), 512), ((7680, 4320), (2, 2), 64),
+                             ((7680, 4320), (3, 2), 64), ((1920, 1080), (1, 8), 384)]:
+        plan_still(w, h, grid, overlap_min=(ov, ov))
+
+
+def test_serpentine_scan_keeps_neighbours_adjacent():
+    p = plan_still(7680, 4320, (3, 2))
+    assert p["scan"] == [0, 1, 2, 5, 4, 3]
+
+
+def test_stitch_never_writes_into_the_callers_global_pass():
+    """Review 2026-10-03 (Codex, reproduced): a global pass already at render
+    size came back as its own log2 after each stitch, so repeated stitches
+    returned 4.0, 2.0, 1.0 for a constant plate."""
+    p = plan_still(1024, 576, (2, 2))
+    rw, rh = p["render"]["width"], p["render"]["height"]
+    zones = [z.copy() for z in crop_zones(pad_to_render(np.full((576, 1024, 3), 4.0, np.float32), p), p)]
+    g = np.full((rh, rw, 3), 4.0, np.float32)
+    for _ in range(3):
+        out, _ = stitch([z.copy() for z in zones], p, global_hdr=g)
+        assert np.allclose(out, 4.0, rtol=1e-4)
+    assert np.all(g == 4.0)
+
+
+def test_resize_bilinear_returns_a_fresh_array_at_the_same_size():
+    a = np.ones((8, 8, 3), np.float32)
+    assert not np.shares_memory(resize_bilinear(a, 8, 8), a)
+
+
+def test_zones_as_frames_is_8k_plus_1_and_maps_back():
+    p = plan_still(1024, 576, (2, 2))
+    zones = [np.full((4, 4, 3), i, np.float32) for i in range(4)]
+    frames, frame_of_zone = zones_as_frames(zones, p)
+    assert len(frames) == 9 == frames_8k1(4)
+    for zi, fi in enumerate(frame_of_zone):
+        assert frames[fi][0, 0, 0] == zi
+
+
+def _ramp_plate(w, h):
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    return np.stack([0.05 + xx / w, 0.05 + yy / h, 0.05 + 0.5 * (xx + yy) / (w + h)], -1)
+
+
+def test_split_then_stitch_is_identity_without_a_model():
+    # Gate 1: zones straight back -> the plate, exactly (to float precision).
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    out, rep = stitch(zones, p)
+    assert out.shape == plate.shape
+    assert np.max(np.abs(out - plate) / plate) < 1e-5
+    assert all(s["p95_stops"] < 1e-5 for s in rep["seams_before"])
+
+
+def test_anchor_removes_a_per_zone_exposure_disagreement():
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    gains = [1.0, 1.6, 0.7, 1.3]                       # each zone guessed its own exposure
+    off = [z * g for z, g in zip(zones, gains)]
+    glob = pad_to_render(plate, p)[::4, ::4]            # a low-tier whole-frame pass
+    raw, rep_raw = stitch(off, p)
+    fixed, rep = stitch(off, p, global_hdr=glob)
+    before = max(s["median_stops"] for s in rep["seams_before"])
+    after = max(s["median_stops"] for s in rep["seams_after_anchor"])
+    assert before > 0.4 and after < 0.05
+    err_raw = np.median(np.abs(np.log2(raw / plate)))
+    err_fixed = np.median(np.abs(np.log2(fixed / plate)))
+    assert err_fixed < 0.05 < err_raw
+
+
+def test_anchor_keeps_zone_detail():
+    rng = np.random.default_rng(0)
+    plate = _ramp_plate(1100, 620) * (1 + 0.2 * rng.random((620, 1100, 1))).astype(np.float32)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    glob = pad_to_render(plate, p)[::8, ::8]            # too coarse to carry the texture
+    out, _ = stitch(zones, p, global_hdr=glob, split_px=64)
+    hi_true = to_log2(plate) - lowpass(to_log2(plate), 16)
+    hi_out = to_log2(out) - lowpass(to_log2(out), 16)
+    assert np.corrcoef(hi_true.ravel(), hi_out.ravel())[0, 1] > 0.95
+
+
+def test_seam_metric_reports_disagreement():
+    p = plan_still(1024, 576, (2, 1))
+    zones = crop_zones(pad_to_render(np.ones((576, 1024, 3), np.float32), p), p)
+    zones[1] = zones[1] * 2.0
+    (s,) = seam_metrics([to_log2(z) for z in zones], p)
+    assert s["median_stops"] == pytest.approx(1.0, abs=1e-4)
+
+
+def test_wrong_zone_count_raises():
+    p = plan_still(1024, 576, (2, 2))
+    with pytest.raises(ValueError, match="zone results"):
+        stitch([np.ones((4, 4, 3))], p)
+
+
+def _striped_conversion(seed=0):
+    """An SDR plate with its OWN faint stripes, and an 'HDR conversion' that
+    adds different, stronger ones plus a real highlight expansion."""
+    rng = np.random.default_rng(seed)
+    h, w = 400, 900
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    own = 1 + 0.008 * np.sin(2 * np.pi * xx / 48)                 # the plate's own banding
+    sdr = (0.2 + 0.5 * xx / w)[..., None] * own[..., None] * np.ones(3, np.float32)
+    sdr[50:90, 600:700] = 0.97                                      # a clipped highlight
+    added = np.exp2(0.03 * np.sin(2 * np.pi * xx / 90 + rng.random()))  # model stripes
+    hdr = sdr * added[..., None]
+    hdr[50:90, 600:700] = 6.0                                       # expansion the model made
+    return sdr, hdr, added
+
+
+def test_destripe_removes_added_stripes_and_keeps_highlights():
+    from atlas_camera.core.matrixzone import destripe_columns
+    sdr, hdr, added = _striped_conversion()
+    out, rep = destripe_columns(hdr, sdr)
+    assert rep["ripple_before_stops"] > 0.015 and rep["ripple_after_stops"] < 0.003
+    # the plate's own 48 px banding survives (it is not the conversion's)
+    np.testing.assert_allclose(out[200:300, 100:500], sdr[200:300, 100:500], rtol=0.01)
+    # the reconstructed highlight stays reconstructed
+    assert out[60:80, 620:680].mean() > 5.0
+
+
+def test_destripe_per_band_interpolates_without_a_row_edge():
+    from atlas_camera.core.matrixzone import destripe_columns
+    sdr, hdr, _ = _striped_conversion()
+    out, rep = destripe_columns(hdr, sdr, bands=[(0, 200), (200, 400)])
+    assert rep["bands"] == 2
+    row_jump = np.abs(np.log2(out[200, 50:550, 0]) - np.log2(out[199, 50:550, 0])).max()
+    assert row_jump < 0.01
+
+
+def _textured(w, h, seed=1):
+    rng = np.random.default_rng(seed)
+    # stationary texture: a ramp's log-gradient varies across the frame, so
+    # the seam line and the random lines would not see the same content
+    return (0.4 * (1 + 0.3 * rng.random((h, w, 1))) * np.ones((1, 1, 3))).astype(np.float32)
+
+
+def test_seam_step_test_passes_a_clean_stitch():
+    plate = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    out, _ = stitch(crop_zones(pad_to_render(plate, p), p), p)
+    rep = seam_step_test(out, p)
+    assert len(rep["seams"]) == 4 and rep["pass"] is True
+    assert rep["worst"]["ratio"] < 1.5
+
+
+def test_seam_step_test_flags_a_tonal_seam_and_names_it():
+    plate = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 1))
+    out, _ = stitch(crop_zones(pad_to_render(plate, p), p), p)
+    out = out.copy()
+    out[:, 550:] *= 1.5                                 # a half-stop step on the seam line
+    rep = seam_step_test(out, p)
+    assert rep["pass"] is False
+    assert rep["flagged"] == ["z00|z01"]
+    assert rep["worst"]["at_px"] == 550 and rep["worst"]["ratio"] > 1.5
+
+
+def test_seam_step_test_opposite_sign_halves_do_not_cancel():
+    # +2 stops on the upper half of the seam, -2 on the lower half. A
+    # whole-line |median| is ~0 (used to PASS 0.00x); the windowed score fails it.
+    sdr = _textured(1100, 620)
+    p = plan_still(1100, 620, (2, 1))
+    hdr, _ = stitch(crop_zones(pad_to_render(sdr, p), p), p)
+    seamed = hdr.copy()
+    seamed[:310, 550:] *= 4.0
+    seamed[310:, 550:] *= 0.25
+    for kw in ({"sdr_linear": sdr}, {}):
+        rep = seam_step_test(seamed, p, **kw)
+        assert rep["pass"] is False and rep["flagged"] == ["z00|z01"], kw
+        s = rep["seams"][0]
+        assert s["windows"] == 2 and s["step_stops"] > 1.5 and s["window_p95_stops"] > 1.5
+    # a uniform clean stitch still passes with the same windowing
+    assert seam_step_test(hdr, p, sdr_linear=sdr)["pass"] is True
+
+
+def test_seam_windows_cover_the_segment():
+    from atlas_camera.core.matrixzone import _windows
+    assert _windows(0, 620) == [(0, 310), (310, 620)]
+    assert _windows(10, 100) == [(10, 100)]
+    w = _windows(16, 2176)
+    assert w[0][0] == 16 and w[-1][1] == 2176 and all(a[1] == b[0] for a, b in zip(w, w[1:]))
+
+
+def test_seam_step_test_has_no_verdict_without_seams():
+    p = plan_still(1024, 576, (1, 1))
+    rep = seam_step_test(np.ones((576, 1024, 3), np.float32), p)
+    assert rep["seams"] == [] and rep["pass"] is None
+
+
+@pytest.mark.parametrize("bad", ["empty", "nan"])
+def test_stitch_refuses_a_failed_zone_and_names_it(bad):
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    if bad == "empty":
+        zones[2] = np.zeros((0, 0, 3), np.float32)
+    else:
+        zones[2] = zones[2].copy()
+        zones[2][5, 5, 0] = np.nan
+    with pytest.raises(ValueError, match=f"zone {p['zones'][2]['id']}.*hole"):
+        stitch(zones, p)
+
+
+def test_seam_step_test_sdr_control_separates_structure_from_a_tonal_seam():
+    # A real vertical edge sits exactly on the seam line. The plain step cannot
+    # tell it from a seam; subtracting the SDR's own step on the line can.
+    sdr = _textured(1100, 620)
+    sdr[:, 550:] *= 3.0                                 # structure, present in the SDR too
+    p = plan_still(1100, 620, (2, 1))
+    hdr, _ = stitch(crop_zones(pad_to_render(sdr, p), p), p)
+    plain = seam_step_test(hdr, p)
+    ctrl = seam_step_test(hdr, p, sdr_linear=sdr)
+    assert plain["flagged"] == ["z00|z01"] and plain["sdr_controlled"] is False
+    assert ctrl["pass"] is True and ctrl["sdr_controlled"] is True
+    seamed = hdr.copy()
+    seamed[:, 550:] *= 1.5                              # now a tonal seam on top of it
+    assert seam_step_test(seamed, p, sdr_linear=sdr)["flagged"] == ["z00|z01"]
+
+
+def test_destripe_bands_are_capped_at_a_quarter_plate():
+    from atlas_camera.core.matrixzone import zone_row_bands
+    b4 = zone_row_bands(plan_still(7680, 4512, (4, 4)))
+    b2 = zone_row_bands(plan_still(7680, 4512, (2, 2)))
+    assert b4 == [(0, 1128), (1128, 2256), (2256, 3384), (3384, 4512)]   # unchanged
+    assert b2 == b4                                                       # 2x2 rows split in two
+    assert zone_row_bands(plan_still(7680, 4512, (2, 2)), max_fraction=0) == [(0, 2256), (2256, 4512)]
+
+
+def test_local_destripe_removes_partial_stripes_on_flat_and_spares_structure():
+    from atlas_camera.core.matrixzone import destripe_local
+    H, W = 768, 1024
+    rng = np.random.default_rng(3)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    sdr = (0.4 + 0.1 * yy / H)[..., None] * np.ones((1, 1, 3), np.float32)   # flat sky ramp
+    # an object with real vertical structure (a picket of bars) on the right
+    bars = ((xx // 6) % 2 == 0) & (xx > 700) & (yy > 300)
+    sdr = np.where(bars[..., None], 0.05, sdr).astype(np.float32)
+    hdr = sdr * 2.0
+    # the conversion adds thin vertical stripes in the UPPER sky only
+    stripes = np.exp2(0.15 * rng.standard_normal(W).astype(np.float32))
+    upper = yy < 300
+    hdr = np.where(upper[..., None], hdr * stripes[None, :, None], hdr).astype(np.float32)
+    out, rep = destripe_local(hdr, sdr, rows=128)
+    lum = lambda a: np.log2((a * [0.2126, 0.7152, 0.0722]).sum(-1))  # noqa: E731
+    before = np.std(np.median(lum(hdr[40:260, :650]) - lum(sdr[40:260, :650]), 0))
+    after = np.std(np.median(lum(out[40:260, :650]) - lum(sdr[40:260, :650]), 0))
+    assert before > 0.1 and after < 0.3 * before
+    obj = (yy > 340) & (xx > 720)
+    assert np.max(np.abs(lum(out)[obj] - lum(hdr)[obj])) < 0.02             # structure untouched
+    assert rep["field_max_stops"] < 1.0
+
+
+def test_sdr_detail_transfer_drops_stripes_keeps_edges_and_clipped_hdr():
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import sdr_detail_transfer
+    H, W = 256, 384
+    rng = np.random.default_rng(5)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    disp = (0.55 + 0.05 * rng.random((H, W))).astype(np.float32)        # textured sky
+    disp = np.where(xx > 250, 0.12, disp)                                 # dark object, hard edge
+    disp = np.where((yy < 60) & (xx < 120), 1.0, disp)                    # clipped highlight
+    disp = np.repeat(disp[..., None], 3, -1)
+    lin = srgb_to_linear(disp)
+    tone = 1.6 * lin ** 1.2                                              # the conversion's (smooth) curve
+    stripes = np.exp2(0.12 * np.sin(xx / 2.0) + 0.1 * np.sin(xx / 12.0))  # 13 px and 75 px periods
+    hdr = (tone * stripes[..., None]).astype(np.float32)
+    hdr[:60, :120] = 6.0 + rng.random((60, 120, 3)) * 0.5                 # reconstructed highlight
+    out, rep = sdr_detail_transfer(hdr, disp, radius=48)
+    lg = lambda a: np.log2(np.maximum((a * [0.2126, 0.7152, 0.0722]).sum(-1), 1e-4))  # noqa: E731
+    sky = (slice(80, 250), slice(20, 230))
+    true = lg(tone)
+    err_before = np.std((lg(hdr) - true)[sky])
+    err_after = np.std((lg(out) - true)[sky])
+    assert err_before > 0.08 and err_after < 0.3 * err_before
+    edge = (slice(80, 250), slice(240, 262))                              # no halo at the silhouette
+    assert np.max(np.abs((lg(out) - true)[edge])) < 0.25
+    assert np.allclose(out[5:50, 5:110], hdr[5:50, 5:110], rtol=1e-3)     # clipped: HDR kept
+    assert 0.0 < rep["kept_hdr_fraction"] < 0.2
+
+
+def test_sdr_detail_transfer_pure_colour_ramp_has_no_hue_shift():
+    # The HDR is ACEScg, the SDR Rec.709. Ratios taken across the two
+    # spaces gave saturated primaries a hue shift (chroma error 0.17 on this
+    # ramp before the fix). A pure exposure in ACEScg must come back exactly.
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import rec709_linear_to_acescg, sdr_detail_transfer
+    H, W = 128, 192
+    xx = np.mgrid[0:H, 0:W][1].astype(np.float32)
+    pal = np.eye(3, dtype=np.float32)                          # pure R, G, B columns
+    disp = ((0.1 + 0.6 * (xx / W))[..., None] * pal[xx.astype(int) % 3]).astype(np.float32)
+    hdr = (rec709_linear_to_acescg(srgb_to_linear(disp)) * 2.0).astype(np.float32)
+    out, _ = sdr_detail_transfer(hdr, disp, radius=16)
+
+    def chroma(a):
+        a = np.maximum(a, 1e-6)
+        return a / a.sum(-1, keepdims=True)
+
+    assert np.abs(chroma(out) - chroma(hdr)).max() < 1e-4
+    assert np.abs(np.log2(np.maximum(out, 1e-6) / hdr)).max() < 1e-3
+
+
+def test_ap1_luma_of_rec709_matches_convert_then_weigh():
+    from atlas_camera.core.matrixzone import (
+        LUMA_AP1,
+        _luma_ap1_of_rec709,
+        rec709_linear_to_acescg,
+    )
+    rgb = np.random.default_rng(2).random((50, 3)).astype(np.float32)
+    direct = (rec709_linear_to_acescg(rgb) * np.asarray(LUMA_AP1, np.float32)).sum(-1)
+    np.testing.assert_allclose((rgb * _luma_ap1_of_rec709(np)).sum(-1), direct, rtol=1e-5)
+    assert sum(LUMA_AP1) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_stitch_refuses_a_non_finite_global_pass():
+    plate = _ramp_plate(1100, 620)
+    p = plan_still(1100, 620, (2, 2))
+    zones = crop_zones(pad_to_render(plate, p), p)
+    glob = pad_to_render(plate, p)[::4, ::4].copy()
+    glob[3, 7, 1] = np.inf
+    glob[9, 2, 0] = np.nan
+    with pytest.raises(ValueError, match="global pass has 2 non-finite"):
+        stitch(zones, p, global_hdr=glob)
+
+
+def test_srgb_to_linear_f32_matches_the_float64_curve():
+    from atlas_camera.core.generated_mesh import srgb_to_linear
+    from atlas_camera.core.matrixzone import srgb_to_linear_f32
+    x = np.concatenate([np.linspace(-0.1, 1.1, 2001), [0.04045, 0.0404, 0.0405]]).astype(np.float32)
+    out = srgb_to_linear_f32(x)
+    assert out.dtype == np.float32
+    np.testing.assert_allclose(out, srgb_to_linear(x), rtol=2e-6, atol=1e-8)
+
+
+def test_resize_and_lowpass_stay_float32():
+    # Float64 weights used to promote every resize (and the 8K global
+    # upsample) to float64 at ~3x the memory.
+    from atlas_camera.core.matrixzone import resize_bilinear
+    a = np.random.default_rng(0).random((37, 53, 3)).astype(np.float32)
+    assert resize_bilinear(a, 80, 120).dtype == np.float32
+    assert lowpass(a, 8).dtype == np.float32
+
+
+def test_overlap_actual_is_appended_without_touching_parity_keys():
+    p = plan_still(7680, 4320, (2, 2))
+    assert set(p) == {"schema", "grid", "plate", "render", "zone_size", "global",
+                      "overlap", "zones", "scan", "overlap_actual"}
+    assert all(set(z) == {"id", "index", "plateRect", "renderRect"} for z in p["zones"])
+    oa = p["overlap_actual"]
+    assert oa["requested"] == [64, 64]
+    assert oa["zones"] == {"z00": [128, 128], "z01": [128, 128],
+                           "z10": [128, 128], "z11": [128, 128]}
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    assert narrowed_overlaps(p) == []
+
+
+def test_overlap_actual_matches_the_zone_rects_on_a_clamped_grid():
+    # 1x8 / 512 is the zone-clamp repro. The clamp is monotone and edge zones are
+    # pinned to the canvas ends, so a clamped zone only slides TOWARD its
+    # edge-side neighbour: overlap grows, it is never narrowed (also swept).
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    p = plan_still(3840, 2160, (1, 8), overlap_min=(512, 512))
+    rects = {z["id"]: z["renderRect"] for z in p["zones"]}
+    for r in range(8):
+        near = []
+        if r > 0:
+            a = rects[f"z{r - 1}0"]
+            near.append(a[1] + a[3] - rects[f"z{r}0"][1])
+        if r < 7:
+            b = rects[f"z{r + 1}0"]
+            near.append(rects[f"z{r}0"][1] + rects[f"z{r}0"][3] - b[1])
+        assert p["overlap_actual"]["zones"][f"z{r}0"] == [None, min(near)]
+    assert narrowed_overlaps(p) == []
+
+
+def test_narrowed_overlaps_names_a_zone_below_the_request():
+    from atlas_camera.core.matrixzone import narrowed_overlaps
+    p = plan_still(7680, 4320, (2, 2), overlap_min=(128, 128))
+    p["overlap_actual"]["zones"]["z10"] = [96, 128]
+    assert narrowed_overlaps(p) == [("z10", "x", 96, 128)]
+    del p["overlap_actual"]                        # an older handle: nothing to report
+    assert narrowed_overlaps(p) == []

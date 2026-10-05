@@ -35,12 +35,36 @@ def _classes_calling_a_degrading_helper():
             tree = ast.parse(py.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover
             continue
+        # A node whose body was split into module-level helpers still degrades
+        # through them: follow module functions transitively, or a refactor
+        # silently drops the node from this guard (found 2026-10-03).
+        funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+        def _direct(node):
+            return {n.func.id for n in ast.walk(node)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+
+        reaches: dict[str, set[str]] = {}
+
+        def _reach(name, seen=()):
+            if name in reaches:
+                return reaches[name]
+            got = set()
+            for c in _direct(funcs[name]):
+                if c in DEGRADING_HELPERS:
+                    got.add(c)
+                elif c in funcs and c not in seen:
+                    got |= _reach(c, (*seen, name))
+            reaches[name] = got
+            return got
+
         for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
-            called = {
-                n.func.id for n in ast.walk(cls)
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                and n.func.id in DEGRADING_HELPERS
-            }
+            called = set()
+            for c in _direct(cls):
+                if c in DEGRADING_HELPERS:
+                    called.add(c)
+                elif c in funcs:
+                    called |= _reach(c)
             if not called:
                 continue
             rt = None
@@ -79,3 +103,29 @@ def test_a_node_that_can_degrade_can_report(module, cls, helpers, return_types):
         "what all-zero CLAIMS: for a hole/coverage mask that is 'perfect result', "
         "so a failed run must return ones, not zeros."
     )
+
+
+#: Every node the guard covers today. A refactor that moves a node's helper
+#: call where the AST walk cannot see it (a ``self.`` method, another module)
+#: must fail here instead of silently shrinking coverage (found 2026-10-03:
+#: a helper split dropped AtlasImportGeneratedMesh without a failure). Adding a
+#: node is fine; removing one needs an explicit edit to this set.
+EXPECTED_FLOOR = {
+    ("nodes_depth.py", "AtlasBoundedBand"),
+    ("nodes_depth.py", "AtlasDepthLayerMask"),
+    ("nodes_geometry.py", "AtlasDeriveInteriorRoom"),
+    ("nodes_geometry.py", "AtlasDeriveReliefMesh"),
+    ("nodes_geometry.py", "AtlasDeriveRoofsFacades"),
+    ("nodes_geometry.py", "AtlasDeriveTowersSpires"),
+    ("nodes_geometry.py", "AtlasDeriveWalls"),
+    ("nodes_geometry.py", "AtlasPlaneMattes"),
+    ("nodes_inpaint.py", "AtlasCleanPlateLayer"),
+    ("nodes_inpaint.py", "AtlasSkyDomeLayer"),
+    ("nodes_object_mesh.py", "AtlasImportGeneratedMesh"),
+}
+
+
+def test_the_guard_still_sees_every_node_it_covered():
+    got = {(m, c) for m, c, _, _ in _classes_calling_a_degrading_helper()}
+    missing = EXPECTED_FLOOR - got
+    assert not missing, f"guard lost coverage of {sorted(missing)}"

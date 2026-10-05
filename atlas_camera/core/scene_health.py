@@ -236,6 +236,9 @@ _FLAG_SEVERITY = {
     # focal (Depth Pro) disagrees with the solve's fx beyond the ratio band.
     "focal_mismatch": "warn",
     "mixed_projection_evidence": "warn",
+    # A generated object mesh (Pixal3D via AtlasImportGeneratedMesh) whose
+    # placement gates did not pass cleanly but was appended anyway.
+    "generated_object_unverified": "warn",
 }
 
 # Acceptable ratio band for depth-model focal vs solve fx (~±0.4 stop of FOV).
@@ -550,6 +553,28 @@ def evaluate_scene_health(
             "scale_unverified",
             f"scale {scale.status.upper()} — not verified: {scale.detail}"))
 
+    # Generated object meshes: the import node grades its own placement
+    # (scale registration + reprojection gates); the VERDICT is made here.
+    # Only a non-"ok" grade flags -- the hidden side is a hypothesis on every
+    # generated mesh, which the node's report states; flagging all of them
+    # would make the flag carry no information.
+    # Function-local: generated_mesh imports this module at load time.
+    from atlas_camera.core.generated_mesh import GENERATED_SOURCE
+
+    scene = getattr(solve, "projection_scene", None)
+    for prim in (getattr(scene, "proxy_geometry", None) or []):
+        meta = getattr(prim, "metadata", None) or {}
+        if meta.get("source") != GENERATED_SOURCE:
+            continue
+        grade = str(meta.get("generated_grade") or "unknown")
+        if grade != "ok":
+            flags.append(_flag(
+                "generated_object_unverified",
+                f"generated object {getattr(prim, 'name', '?')}: placement graded "
+                f"{grade.upper()} ({meta.get('generated_issues') or 'no detail'}) — "
+                "review it in the viewport before export",
+                layer=str(getattr(prim, "name", "") or None)))
+
     level = "pass"
     if any(f.severity == "fail" for f in flags):
         level = "fail"
@@ -558,3 +583,104 @@ def evaluate_scene_health(
     return HealthReport(level=level, flags=flags, camera=camera,
                         per_layer=sources, depth=depth_info, scale=scale,
                         projection_evidence_counts=evidence_counts)
+
+
+# ---------------------------------------------------------------------------
+# Generated object placement grade (AtlasImportGeneratedMesh)
+# ---------------------------------------------------------------------------
+
+#: Registration-quality thresholds on ``rel_mad`` for a generated object
+#: mesh. UNCALIBRATED: provisional until a perturbation sweep (FOV +/-10 deg,
+#: mirrored X, scale x1.3) on real plates measures what broken placements
+#: read. ``core.generated_mesh`` re-exports these names.
+GENERATED_REL_MAD_INSPECT = 0.10
+GENERATED_REL_MAD_REFUSE = 0.25
+
+#: Ground-contact scale disagreeing with the depth scale by more than this
+#: fraction is reported for inspection.
+GENERATED_GROUND_SCALE_TOLERANCE = 0.15
+
+#: Plate-falsification scores whose failure is DEFINITIONAL (refuse): the
+#: rendered depth ordering is no better than chance, or the mesh stands in
+#: observed sky. ``silhouette_iou`` is calibrated on another fixture, so its
+#: failure only grades INSPECT.
+_GENERATED_REFUSE_SCORES = ("depth_order_agreement", "sky_violation")
+
+
+def generated_object_grade(
+    scale: float | None,
+    rel_mad: float,
+    scores: dict[str, Any] | None = None,
+    *,
+    ground_scale: float | None = None,
+    registration_note: str = "",
+    coverage_px: int | None = None,
+) -> tuple[str, list[str]]:
+    """The placement verdict for a generated object mesh: ``(grade, issues)``.
+
+    Pure: the import node MEASURES (scale registration, ground contact,
+    plate falsification scores) and this function JUDGES, so the verdict
+    lives in scene_health like every other trust call. ``grade`` is
+    ``ok`` / ``inspect`` / ``refuse``.
+
+    * ``scale`` None or a non-finite ``rel_mad`` -> refuse (no usable scale
+      registration; ``registration_note`` says why).
+    * ``rel_mad`` above :data:`GENERATED_REL_MAD_REFUSE` refuses, above
+      :data:`GENERATED_REL_MAD_INSPECT` inspects (both uncalibrated).
+    * a ground-contact scale disagreeing past the tolerance inspects.
+    * ``scores`` (``score_geometry_against_plate`` output, None/empty =
+      unscored): a failed definitional gate refuses, a failed silhouette
+      IoU inspects.
+    * ``coverage_px == 0`` with a measured scale refuses: the mesh covers no
+      pixel of the solve camera.
+    """
+    import math
+
+    issues: list[str] = []
+    try:
+        mad = float(rel_mad)
+    except (TypeError, ValueError):
+        mad = float("nan")
+    try:
+        s_ok = scale is not None and math.isfinite(float(scale)) and float(scale) > 0
+    except (TypeError, ValueError):
+        s_ok = False
+    if not s_ok or not math.isfinite(mad):
+        issues.append("no usable scale registration")
+        if registration_note:
+            issues.append(str(registration_note))
+        return "refuse", issues
+
+    s = float(scale)
+    refuse = False
+    if mad > GENERATED_REL_MAD_REFUSE:
+        refuse = True
+        issues.append(f"rel_mad {mad:.3f} > {GENERATED_REL_MAD_REFUSE} (refuse, uncalibrated)")
+    elif mad > GENERATED_REL_MAD_INSPECT:
+        issues.append(f"rel_mad {mad:.3f} > {GENERATED_REL_MAD_INSPECT} (inspect, uncalibrated)")
+    if ground_scale is not None and s > 0:
+        disagree = abs(float(ground_scale) - s) / s
+        if disagree > GENERATED_GROUND_SCALE_TOLERANCE:
+            issues.append(f"ground-contact scale disagrees with depth scale by "
+                          f"{disagree * 100:.0f}% (> {GENERATED_GROUND_SCALE_TOLERANCE * 100:.0f}%)")
+    grade = "refuse" if refuse else ("inspect" if issues else "ok")
+    if registration_note:
+        issues.append(str(registration_note))
+
+    if scores:
+        for key in _GENERATED_REFUSE_SCORES:
+            m = scores.get(key) or {}
+            if m.get("available") and m.get("pass") is False:
+                grade = "refuse"
+                issues.append(f"{key} {m['value']:.3f} fails its definitional gate "
+                              f"({m['threshold']})")
+        iou = scores.get("silhouette_iou") or {}
+        if iou.get("available") and iou.get("pass") is False:
+            issues.append(f"silhouette IoU {iou['value']:.3f} < {iou['threshold']} "
+                          "(inspect; calibrated on another fixture)")
+            if grade == "ok":
+                grade = "inspect"
+    elif coverage_px is not None and int(coverage_px) <= 0:
+        grade = "refuse"
+        issues.append("the mesh covers no pixel of the solve camera")
+    return grade, issues

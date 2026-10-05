@@ -175,6 +175,47 @@ def _obj_ribbon_colors(mesh: ReliefMesh, texture: Any,
         return None
 
 
+def _generated_split(mesh: ReliefMesh, faces: Any) -> dict[str, Any] | None:
+    """Split a generated-object mesh into PHOTO faces and VERTEX-COLOUR faces.
+
+    A face touching any vertex below ``PHOTO_WEIGHT_SPLIT`` paints from the
+    model's vertex colour (the side the camera never saw); the rest keep the
+    projected plate. The two sets must not share a vertex: the textured side
+    needs white vertex colour (so the plate is not tinted) and the hidden side
+    needs the model's, so every vertex a vertex-colour face uses is duplicated.
+    Returns None for an ordinary mesh (no vertex colours, or none needed).
+    """
+    import numpy as np
+
+    vc = getattr(mesh, "vertex_colors", None)
+    if vc is None:
+        return None
+    from atlas_camera.core.generated_mesh import PHOTO_WEIGHT_SPLIT
+
+    verts = np.asarray(mesh.vertices, dtype=np.float32).reshape(-1, 3)
+    vc = np.asarray(vc, dtype=np.float32).reshape(-1, 3)
+    if len(vc) != len(verts):
+        return None
+    pw = getattr(mesh, "photo_weight", None)
+    pw = (np.ones(len(verts), dtype=np.float32) if pw is None
+          else np.asarray(pw, dtype=np.float32).reshape(-1))
+    faces = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    vc_face = (pw < PHOTO_WEIGHT_SPLIT)[faces].any(axis=1)
+    if not vc_face.any():
+        return None
+    used = np.unique(faces[vc_face])
+    remap = np.full(len(verts), -1, dtype=np.int64)
+    remap[used] = len(verts) + np.arange(len(used))
+    uvs = np.asarray(mesh.uvs, dtype=np.float32).reshape(-1, 2)
+    return {
+        "vertices": np.concatenate([verts, verts[used]]),
+        "uvs": np.concatenate([uvs, uvs[used]]),
+        "colors_srgb": np.concatenate([np.ones((len(verts), 3), np.float32), vc[used]]),
+        "photo_faces": faces[~vc_face],
+        "vc_faces": remap[faces[vc_face]],
+    }
+
+
 def export_relief_mesh(
     mesh: ReliefMesh,
     output_dir: str | Path,
@@ -220,6 +261,10 @@ def export_relief_mesh(
     # primitive, and OBJ has no per-vertex colour channel in the base format.
     # What is left is the widely-implemented `v x y z r g b` extension.
     ribbon_colors = _obj_ribbon_colors(mesh, texture, texture_path)
+    gen = _generated_split(mesh, mesh.faces) if ribbon_colors is None else None
+    if gen is not None:
+        return _write_generated_obj(gen, lines, obj_path, mtl_path, material,
+                                    tex_path, tex_written, len(mesh.vertices))
     if ribbon_colors is None:
         lines.extend(
             f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}" for v in mesh.vertices
@@ -305,12 +350,108 @@ def export_relief_mesh(
     return result
 
 
+def _write_generated_obj(gen: dict[str, Any], lines: list[str], obj_path: Path,
+                         mtl_path: Path, material: str, tex_path: Path | None,
+                         tex_written: bool, n_original: int) -> dict[str, str]:
+    """OBJ for a generated object: photo faces keep the plate under the main
+    material (white vertex colour, so a multiplying reader does not tint it);
+    the hidden side goes under its own UNTEXTURED material carrying the model's
+    colour as ``v x y z r g b`` (sRGB, like the plate)."""
+    import numpy as np
+
+    gen_material = f"{material}_generated"
+    lines.insert(3, "# vertex colours (v x y z r g b): generated hidden side")
+    lines.extend(
+        f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f} {c[0]:.4f} {c[1]:.4f} {c[2]:.4f}"
+        for v, c in zip(gen["vertices"], gen["colors_srgb"]))
+    lines.extend(f"vt {t[0]:.6f} {t[1]:.6f}" for t in gen["uvs"])
+
+    def _face(tri: Any) -> str:
+        a, b, c = (int(i) + 1 for i in tri)
+        return f"f {a}/{a} {b}/{b} {c}/{c}"
+
+    lines.append(f"usemtl {material}")
+    lines.extend(_face(t) for t in gen["photo_faces"])
+    lines.append(f"usemtl {gen_material}")
+    lines.extend(_face(t) for t in gen["vc_faces"])
+    obj_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    mtl = [f"newmtl {material}", "Kd 1.000 1.000 1.000", "Ka 0.000 0.000 0.000",
+           "Ks 0.000 0.000 0.000", "illum 1"]
+    if tex_path is not None:
+        mtl.append(f"map_Kd {tex_path.name if tex_written else tex_path.as_posix()}")
+    kd = np.asarray(gen["colors_srgb"][n_original:], dtype=np.float64).mean(axis=0)
+    mtl += [f"newmtl {gen_material}", f"Kd {kd[0]:.3f} {kd[1]:.3f} {kd[2]:.3f}",
+            "Ka 0.000 0.000 0.000", "Ks 0.000 0.000 0.000", "illum 1"]
+    mtl_path.write_text("\n".join(mtl) + "\n", encoding="utf-8")
+    result = {"obj": str(obj_path), "mtl": str(mtl_path)}
+    if tex_path is not None:
+        result["texture"] = str(tex_path)
+        if not tex_written:
+            result["texture_external"] = "true"
+    return result
+
+
+_GLB_TEXTURE_MIME = {"PNG": "image/png", "JPEG": "image/jpeg"}
+#: Fixed, documented JPEG quality. Not a parameter until a second consumer needs one.
+GLB_JPEG_QUALITY = 90
+
+
+def _jpeg_ready_texture(texture: Any) -> Any:
+    """The texture as an 8-bit RGB or greyscale image JPEG can hold, or ValueError.
+
+    JPEG has no alpha channel, and texture alpha is live in these GLBs: when the
+    transition ribbon emits COLOR_0 the textured material is ``alphaMode: BLEND``,
+    and glTF multiplies baseColorTexture alpha into the result. So alpha is never
+    silently discarded -- a fully opaque alpha channel carries nothing and is
+    dropped; any transparency is refused.
+    """
+    mode = texture.mode
+    if mode in ("RGB", "L"):
+        return texture
+    if mode == "P":
+        texture = texture.convert("RGBA" if "transparency" in texture.info else "RGB")
+        mode = texture.mode
+        if mode == "RGB":
+            return texture
+    if mode in ("RGBA", "LA", "PA"):
+        low, _high = texture.getchannel("A").getextrema()
+        if low < 255:
+            raise ValueError(
+                "texture_format='JPEG' cannot carry texture alpha, and this texture has "
+                "transparent pixels; export with texture_format='PNG'"
+            )
+        return texture.convert("L" if mode == "LA" else "RGB")
+    raise ValueError(
+        f"texture_format='JPEG' supports 8-bit RGB or greyscale textures (and fully "
+        f"opaque RGBA/LA/palette); got mode {mode!r}; export with texture_format='PNG'"
+    )
+
+
+def _encode_glb_texture(texture: Any | None, texture_format: Any) -> tuple[bytes, str | None]:
+    """Validate ``texture_format`` and encode the texture: ``(bytes, mimeType)``."""
+    import io
+
+    fmt = texture_format.upper() if isinstance(texture_format, str) else None
+    if fmt not in _GLB_TEXTURE_MIME:
+        raise ValueError(f"texture_format must be 'PNG' or 'JPEG', got {texture_format!r}")
+    if texture is None:
+        return b"", None
+    buf = io.BytesIO()
+    if fmt == "JPEG":
+        _jpeg_ready_texture(texture).save(buf, format="JPEG", quality=GLB_JPEG_QUALITY)
+    else:
+        texture.save(buf, format="PNG")
+    return buf.getvalue(), _GLB_TEXTURE_MIME[fmt]
+
+
 def export_relief_mesh_glb(
     mesh: ReliefMesh,
     output_dir: str | Path,
     *,
     texture: Any | None = None,
     name: str = "atlas_relief_mesh",
+    texture_format: str = "PNG",
 ) -> dict[str, str]:
     """Write a self-contained ``{name}.glb`` (glTF 2.0 binary, texture embedded).
 
@@ -319,12 +460,27 @@ def export_relief_mesh_glb(
     The material is tagged ``KHR_materials_unlit`` so the projected photo renders
     exactly as-is (no lighting), with a PBR fallback for viewers without the
     extension. Zero dependencies beyond numpy (+ Pillow when embedding texture).
+
+    ``texture_format`` selects the embedded image codec, case-insensitively:
+
+    - ``"PNG"`` (default) — lossless, alpha preserved. The DCC/preview path, and
+      what every existing reader of these GLBs assumes.
+    - ``"JPEG"`` — lossy, quality :data:`GLB_JPEG_QUALITY`, for web delivery of an
+      already camera-processed photograph. JPEG has no alpha: a texture with any
+      transparent pixel raises ``ValueError`` rather than losing it.
+
+    Any other value raises ``ValueError``. Validation and encoding happen before
+    anything is written, so a refused export leaves no file or directory behind.
+    Without a texture the format has no effect.
     """
-    import io
     import json as _json
-    import struct
 
     import numpy as np
+
+    from atlas_camera.exporters._glb import pad4 as _pad4
+    from atlas_camera.exporters._glb import write_glb_header
+
+    image_bytes, image_mime = _encode_glb_texture(texture, texture_format)
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -333,6 +489,16 @@ def export_relief_mesh_glb(
     verts = np.asarray(mesh.vertices, dtype=np.float32)
     faces = _topology_safe_faces(mesh.vertices, mesh.faces)
     uvs = np.asarray(mesh.uvs, dtype=np.float32).copy()
+    # Generated object (vertex-coloured hidden side). Never combined with a
+    # transition ribbon: a generated mesh has none, and the two would compete
+    # for COLOR_0 and the second primitive.
+    gen = None
+    rt = getattr(mesh, "ribbon_t", None)
+    if rt is None or not bool((np.asarray(rt) > 0).any()):
+        gen = _generated_split(mesh, faces)
+    if gen is not None:
+        verts = gen["vertices"].astype(np.float32)
+        uvs = gen["uvs"].astype(np.float32).copy()
     uvs[:, 1] = 1.0 - uvs[:, 1]  # OBJ bottom-left → glTF top-left
 
     # Transition ribbon: bake the EVALUATED fade, not the raw parameter. The
@@ -362,10 +528,23 @@ def export_relief_mesh_glb(
                 colors[:, :3] = _ribbon_smudged_colors(mesh, texture, smudge)
                 ribbon_face_mask = (t > 0.0)[faces].any(axis=1)
 
+    if gen is not None:
+        from atlas_camera.core.generated_mesh import srgb_to_linear
+
+        # glTF COLOR_0 is LINEAR. White on the photo side (multiplies the
+        # plate by 1); the model's colour, linearised, on the hidden side.
+        colors = np.ones((len(verts), 4), dtype=np.float32)
+        colors[:, :3] = np.asarray(srgb_to_linear(gen["colors_srgb"]), dtype=np.float32)
+        faces = np.concatenate([gen["photo_faces"], gen["vc_faces"]]).astype(faces.dtype)
+        ribbon_face_mask = np.zeros(len(faces), dtype=bool)
+        ribbon_face_mask[len(gen["photo_faces"]):] = True
+
     # Group the ribbon's triangles at the END of the index buffer so the two
     # primitives are contiguous ranges of one accessor rather than two buffers.
     n_surface_faces = len(faces)
-    if ribbon_face_mask is not None and ribbon_face_mask.any():
+    if gen is not None:
+        n_surface_faces = len(gen["photo_faces"])
+    elif ribbon_face_mask is not None and ribbon_face_mask.any():
         order = np.concatenate([np.nonzero(~ribbon_face_mask)[0],
                                 np.nonzero(ribbon_face_mask)[0]])
         faces = faces[order]
@@ -373,21 +552,12 @@ def export_relief_mesh_glb(
     else:
         ribbon_face_mask = None
 
-    png_bytes = b""
-    if texture is not None:
-        buf = io.BytesIO()
-        texture.save(buf, format="PNG")
-        png_bytes = buf.getvalue()
-
-    def _pad4(data: bytes, pad: bytes = b"\x00") -> bytes:
-        return data + pad * ((4 - len(data) % 4) % 4)
-
     # Binary buffer layout: positions | uvs | indices | (colors) | (image)
     parts = [_pad4(verts.tobytes()), _pad4(uvs.tobytes()), _pad4(faces.tobytes())]
     if colors is not None:
         parts.append(_pad4(colors.tobytes()))
-    if png_bytes:
-        parts.append(_pad4(png_bytes))
+    if image_bytes:
+        parts.append(_pad4(image_bytes))
     offsets = []
     off = 0
     for part in parts:
@@ -422,7 +592,7 @@ def export_relief_mesh_glb(
         "extensions": {"KHR_materials_unlit": {}},
         "pbrMetallicRoughness": {"metallicFactor": 0.0, "roughnessFactor": 1.0},
     }
-    if colors is not None:
+    if colors is not None and gen is None:
         # Without BLEND the alpha channel is ignored and the skirt reads as an
         # opaque lip — the exact defect this whole feature exists to remove.
         material["alphaMode"] = "BLEND"
@@ -445,7 +615,7 @@ def export_relief_mesh_glb(
             "bufferView": 2, "byteOffset": int(n_surface_faces * 3 * 4),
             "componentType": 5125,
             "count": int(faces.size - n_surface_faces * 3), "type": "SCALAR"})
-        materials.append({
+        second: dict[str, Any] = {
             "name": "atlas_relief_transition_ribbon",
             "doubleSided": True,
             "alphaMode": "BLEND",
@@ -453,7 +623,15 @@ def export_relief_mesh_glb(
             "pbrMetallicRoughness": {
                 "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
                 "metallicFactor": 0.0, "roughnessFactor": 1.0},
-        })
+        }
+        if gen is not None:
+            # Opaque: the hidden side is a surface, not a fade.
+            second["name"] = "atlas_generated_vertex_colour"
+            second.pop("alphaMode")
+        materials.append(second)
+        if n_surface_faces == 0:
+            # Every face is hidden-side: a zero-count accessor is invalid glTF.
+            primitives.pop(0)
 
     gltf: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": "AtlasCamera relief mesh"},
@@ -467,10 +645,19 @@ def export_relief_mesh_glb(
         "bufferViews": buffer_views,
         "buffers": [{"byteLength": len(bin_chunk)}],
     }
-    if png_bytes:
-        buffer_views.append({"buffer": 0, "byteOffset": offsets[image_view - 1],
-                             "byteLength": len(png_bytes)})
-        gltf["images"] = [{"bufferView": image_view, "mimeType": "image/png"}]
+    if image_bytes:
+        # The image is always the LAST part of the binary buffer, so its offset
+        # is offsets[-1]. `offsets` is indexed by PART position; `image_view` is
+        # a bufferView index. Conflating the two pointed the image one part too
+        # early every time -- at the faces block with no colors, at the colors
+        # block with them -- so every embedded texture in a GLB this exporter
+        # wrote was corrupt. It went unseen because the test asserted only that
+        # each bufferView stayed inside the BIN chunk, which a wrong-but-in-range
+        # offset satisfies. Found 2026-08-20 by decoding the bytes back; the
+        # regression test now reads the PNG signature at that offset.
+        buffer_views.append({"buffer": 0, "byteOffset": offsets[len(parts) - 1],
+                             "byteLength": len(image_bytes)})
+        gltf["images"] = [{"bufferView": image_view, "mimeType": image_mime}]
         gltf["samplers"] = [{"magFilter": 9729, "minFilter": 9987,
                              "wrapS": 33071, "wrapT": 33071}]
         gltf["textures"] = [{"source": 0, "sampler": 0}]
@@ -479,12 +666,8 @@ def export_relief_mesh_glb(
         material["pbrMetallicRoughness"]["baseColorFactor"] = [0.6, 0.6, 0.6, 1.0]
 
     json_chunk = _pad4(_json.dumps(gltf, separators=(",", ":")).encode("utf-8"), b" ")
-    total = 12 + 8 + len(json_chunk) + 8 + len(bin_chunk)
     with open(glb_path, "wb") as fh:
-        fh.write(struct.pack("<III", 0x46546C67, 2, total))          # glTF header
-        fh.write(struct.pack("<II", len(json_chunk), 0x4E4F534A))    # JSON chunk
-        fh.write(json_chunk)
-        fh.write(struct.pack("<II", len(bin_chunk), 0x004E4942))     # BIN chunk
+        write_glb_header(fh, json_chunk, len(bin_chunk))
         fh.write(bin_chunk)
 
     return {"glb": str(glb_path)}

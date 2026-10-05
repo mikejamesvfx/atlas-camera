@@ -31,6 +31,12 @@ import urllib.request
 import uuid
 
 PRIMS = {"INT", "FLOAT", "STRING", "BOOLEAN"}
+# Input types the FRONTEND renders as a widget (they own a positional slot in
+# ``widgets_values`` though object_info gives them no primitive type). Found
+# live 2026-10-02: Save 3D (Advanced)'s ``viewport_state`` (LOAD_3D) holds the
+# "" slot before width/height; skipping it shifted width <- "" and the node was
+# rejected and silently dropped from the run.
+FRONTEND_WIDGET_TYPES = {"LOAD_3D", "LOAD_3D_ANIMATION"}
 
 #: Frontend-only nodes: they exist in a saved graph but have NO server-side
 #: implementation, so they never appear in ``/object_info`` and must be dropped
@@ -108,13 +114,29 @@ def is_widget(spec) -> bool:
         return True
     if t == "COMBO" or t in PRIMS:
         return not cfg.get("forceInput")
-    return False
+    return t in FRONTEND_WIDGET_TYPES
 
 
 def spec_items(oi, type_):
     s = oi[type_]["input"]
     return [(k, v) for sec in ("required", "optional")
             for k, v in (s.get(sec) or {}).items()]
+
+
+def _dyn_option_key(option):
+    """A ``COMFY_DYNAMICCOMBO_V3`` option's key. Options are normally
+    ``{"key": ..., "inputs": {...}}`` dicts, but a bare string option (no
+    sub-widgets) also occurs and must not crash the walk."""
+    return option.get("key") if isinstance(option, dict) else option
+
+
+def _dyn_chosen(cfg, value):
+    """The chosen option's dict (for its sub-``inputs``), or None when the
+    value matches nothing or matches a bare-string option (no sub-widgets)."""
+    for o in cfg.get("options", []) or []:
+        if _dyn_option_key(o) == value:
+            return o if isinstance(o, dict) else None
+    return None
 
 
 def widget_inputs(oi, type_, values):
@@ -139,8 +161,7 @@ def widget_inputs(oi, type_, values):
             out[k] = option
             vi += 1
             cfg = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
-            chosen = next((o for o in cfg.get("options", [])
-                           if o.get("key") == option), None)
+            chosen = _dyn_chosen(cfg, option)
             for sec in ("required", "optional"):
                 for sub, sub_spec in ((chosen or {}).get("inputs", {})
                                       .get(sec, {}).items()):
@@ -516,12 +537,32 @@ def collect_output_reports(outputs: dict) -> dict:
     return reports
 
 
+def format_node_errors(node_errors) -> list[str]:
+    """ComfyUI's ``/prompt`` ``node_errors`` as one line per failing input.
+
+    When SOME output nodes fail validation ComfyUI still queues the rest and
+    reports the failures only here, never in ``/history``; a run that drops
+    its Save node then reads as a clean success. Found live 2026-10-02.
+    """
+    out = []
+    for nid, rec in (node_errors or {}).items():
+        rec = rec if isinstance(rec, dict) else {}
+        cls = rec.get("class_type", "?")
+        for e in rec.get("errors") or [{}]:
+            e = e if isinstance(e, dict) else {"message": str(e)}
+            msg = e.get("message") or e.get("type") or "invalid"
+            det = e.get("details")
+            out.append(f"NOT RUN {cls} (node {nid}): {msg}" + (f": {det}" if det else ""))
+    return out
+
+
 def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                    timeout: int = 1800, poll_s: float = 5.0) -> dict:
     """POST the API graph and poll ``/history`` until it finishes.
 
     Returns ``{completed, prompt_id, errors, output_nodes, reports}`` — node
-    errors carry the verbatim exception message, while ``reports`` contains
+    errors carry the verbatim exception message (and any output node ComfyUI
+    refused at queue time, ``NOT RUN ...``), while ``reports`` contains
     bounded STRING diagnostics and AtlasAssessOutput text/JSON (never
     image/base64 payloads).
     """
@@ -533,6 +574,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                 "errors": [json.dumps(resp, default=str)[:4000]],
                 "output_nodes": [], "reports": {}}
     pid = resp["prompt_id"]
+    rejected = format_node_errors(resp.get("node_errors"))
     t0 = time.time()
     missing_not_live_polls = 0
     while time.time() - t0 < timeout:
@@ -550,7 +592,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                 missing_not_live_polls += 1
                 if missing_not_live_polls >= 3:
                     return {"completed": False, "prompt_id": pid,
-                            "errors": ["prompt vanished from queue with no history entry"],
+                            "errors": rejected + ["prompt vanished from queue with no history entry"],
                             "output_nodes": [], "reports": {}}
             else:
                 missing_not_live_polls = 0
@@ -558,7 +600,7 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
         missing_not_live_polls = 0
         rec = hist[pid]
         status = rec.get("status", {})
-        errors = []
+        errors = list(rejected)
         for ev in status.get("messages", []):
             if ev[0] == "execution_error":
                 d = ev[1]
@@ -571,8 +613,54 @@ def queue_and_wait(api: dict, host: str = DEFAULT_HOST,
                                        key=lambda x: int(x) if x.isdigit() else 0),
                 "reports": collect_output_reports(outputs)}
     return {"completed": False, "prompt_id": pid,
-            "errors": [f"timeout after {timeout}s"], "output_nodes": [],
+            "errors": rejected + [f"timeout after {timeout}s"], "output_nodes": [],
             "reports": {}}
+
+
+def _widget_walk(oi: dict, type_: str, values: list) -> tuple[list, int]:
+    """``([(name, spec, value), ...], expected_count)`` for one node's
+    ``widgets_values``, walking exactly as :func:`widget_inputs` maps them
+    (dynamic-combo sub-widgets of the chosen option, seed/upload phantoms).
+    Found live 2026-10-03: the validator counted DecimateMesh/RemeshMesh's
+    dynamic combos as single widgets and then range-checked the wrong values."""
+    items, vi, expected = [], 0, 0
+    for k, spec in spec_items(oi, type_):
+        cfg = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
+        if spec[0] == "COMFY_DYNAMICCOMBO_V3":
+            option = values[vi] if vi < len(values) else None
+            if vi < len(values):
+                keys = [_dyn_option_key(o) for o in cfg.get("options", []) or []]
+                items.append((k, ["COMBO", {"options": keys}], option))
+            vi += 1
+            expected += 1
+            chosen = _dyn_chosen(cfg, option)
+            for sec in ("required", "optional"):
+                for sub, sub_spec in ((chosen or {}).get("inputs", {}).get(sec, {}).items()):
+                    if not is_widget(sub_spec):
+                        continue
+                    expected += 1
+                    if vi < len(values):
+                        items.append((f"{k}.{sub}", sub_spec, values[vi]))
+                    vi += 1
+            continue
+        if not is_widget(spec):
+            continue
+        expected += 1
+        if vi < len(values):
+            items.append((k, spec, values[vi]))
+        vi += 1
+        if k in ("seed", "noise_seed") or cfg.get("image_upload"):
+            expected += 1
+            vi += 1
+    return items, expected
+
+
+def _type_accepts(target: str, source: str) -> bool:
+    """ComfyUI input types may be a comma-separated union (Save 3D's
+    ``FILE_3D_GLB,FILE_3D_GLTF,...``); a link is valid if the types meet."""
+    t = {x.strip() for x in str(target).split(",")}
+    s_ = {x.strip() for x in str(source).split(",")}
+    return bool(t & s_) or "*" in t or "*" in s_ or "COMBO" in t
 
 
 def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
@@ -582,22 +670,14 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
     nodes = {n["id"]: n for n in ui["nodes"]}
     errs, warns = [], []
 
-    def wcount(t):
-        c = 0
-        for k, v in spec_items(oi, t):
-            if is_widget(v):
-                c += 1
-                if k in ("seed", "noise_seed"):
-                    c += 1
-        return c
-
     for n in ui["nodes"]:
         if n["type"] not in VIRTUAL and n["type"] not in oi:
             errs.append(f"type {n['type']} unknown")
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] == "LoadImage" or n["type"] not in oi:
             continue
-        want, got = wcount(n["type"]), len(n.get("widgets_values") or [])
+        vals = n.get("widgets_values") or []
+        want, got = _widget_walk(oi, n["type"], vals)[1], len(vals)
         if want != got:
             errs.append(f"{n['type']} id{n['id']}: widgets_values {got} != {want}")
     for l in ui["links"]:
@@ -616,13 +696,13 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
         st, tt = s["outputs"][sslot]["type"], t["inputs"][tslot]["type"]
         if s["type"] in VIRTUAL or t["type"] in VIRTUAL:
             continue
-        if st != tt and tt != "COMBO" and st != "*" and tt != "*":
+        if not _type_accepts(tt, st):
             errs.append(f"link {lid}: TYPE {s['type']}.{st} -> {t['type']}.{tt}")
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] not in oi:
             continue
         for k, v in (oi[n["type"]]["input"].get("required") or {}).items():
-            if is_widget(v):
+            if is_widget(v) or v[0] == "COMFY_DYNAMICCOMBO_V3":
                 continue
             inp = next((i for i in n["inputs"] if i["name"] == k), None)
             if inp is None:
@@ -632,18 +712,8 @@ def validate_ui(ui: dict, oi: dict) -> tuple[list[str], list[str]]:
     for n in ui["nodes"]:
         if n["type"] in VIRTUAL or n["type"] not in oi:
             continue
-        vals = n.get("widgets_values") or []
-        vi = 0
-        for k, v in spec_items(oi, n["type"]):
-            if not is_widget(v):
-                continue
-            if vi >= len(vals):
-                break
-            val = vals[vi]
-            vi += 1
-            if k in ("seed", "noise_seed"):
-                vi += 1
-            cfg = v[1] if len(v) > 1 else {}
+        for k, v, val in _widget_walk(oi, n["type"], n.get("widgets_values") or [])[0]:
+            cfg = v[1] if len(v) > 1 and isinstance(v[1], dict) else {}
             if v[0] in ("INT", "FLOAT") and isinstance(val, (int, float)) and not isinstance(val, bool):
                 lo, hi = cfg.get("min"), cfg.get("max")
                 if lo is not None and val < lo:

@@ -350,6 +350,22 @@
           "widget": {
             "name": "sub_quad_boundary"
           }
+        },
+        {
+          "name": "sam3_checkpoint",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint"
+          }
+        },
+        {
+          "name": "sam3_checkpoint_override",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "sam3_checkpoint_override"
+          }
         }
       ],
       "outputs": [
@@ -420,7 +436,9 @@
         "off",
         2000,
         8,
-        true
+        true,
+        "hf:facebook/sam3",
+        ""
       ],
       "title": "2 · PRIMARY SOLVE & RELIEF GEOMETRY"
     },

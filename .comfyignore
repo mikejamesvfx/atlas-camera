@@ -43,3 +43,8 @@
 *.pyc
 __pycache__/
 .DS_Store
+
+# --- Repo-root dev files, not needed by end users ---
+/TODOS.md
+/.mcp.json
+/.graphifyignore
