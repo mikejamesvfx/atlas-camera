@@ -109,3 +109,11 @@ def test_colour_gain_range_allows_a_dusk_plate_but_still_flags_a_wild_one():
         assert rep["clamped"] == [clamped] * 3
         if not clamped:
             assert np.allclose(rep["gain"], gain, atol=1e-3)
+
+
+def test_photo_region_erosion_scales_with_the_plate():
+    """Found live 2026-10-05: a fixed 2 px erosion on a 7380 px RAW let mesh
+    vertices at the silhouette paint background colour onto the car's edge."""
+    from atlas_camera.core.generated_mesh import photo_erode_px
+    assert photo_erode_px(320, 200) == 2           # small plates keep the floor
+    assert photo_erode_px(7380, 4928) == 22        # ~0.3% of the long side

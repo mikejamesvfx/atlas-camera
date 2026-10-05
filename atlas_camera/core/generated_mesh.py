@@ -305,7 +305,16 @@ def vertex_normals(vertices: Any, faces: Any) -> Any:
 #: bounding-box diagonal. A FIXED iteration count made the ramp shrink with
 #: mesh density (found live 2026-10-05: at 198k faces the seam was one triangle
 #: row wide and jagged), so the iterations are derived from this.
-PHOTO_FEATHER_FRAC = 0.01
+PHOTO_FEATHER_FRAC = 0.03
+# Was 0.01 until found live 2026-10-05 (D810 dusk SUV): ~4.5 cm of blend was
+# too short for the step between the photo's glossy reflections and the
+# model's matte paint -- the seam read as a ragged edge.
+
+#: Silhouette erosion of the photo region, as a fraction of the plate's long
+#: side (floored at 2 px). A fixed 2 px was nothing on a 7380 px plate: mesh
+#: vertices within a few px of the silhouette registered onto BACKGROUND pixels
+#: and painted street colour onto the car's edge.
+PHOTO_ERODE_FRAC = 0.003
 
 #: Reach of the LOCAL colour match into the hidden side (fraction of the bbox
 #: diagonal); past it the gain fades to the single global one.
@@ -361,6 +370,11 @@ def smoothing_iterations_for(vertices: Any, faces: Any, width_frac: float) -> in
     return int(np.clip(2.0 * (width_frac * diag / edge) ** 2, 3, MAX_SMOOTH_ITERATIONS))
 
 
+def photo_erode_px(width: int, height: int) -> int:
+    """Silhouette erosion (px) of the photo region for a plate of this size."""
+    return max(2, int(round(PHOTO_ERODE_FRAC * max(int(width), int(height)))))
+
+
 def _vertex_adjacency_smooth(np: Any, values: Any, faces: Any, iterations: int) -> Any:
     out = np.asarray(values, dtype=np.float64).copy()
     if iterations <= 0 or faces.size == 0:
@@ -402,7 +416,7 @@ def photo_visibility_weights(
     object_mask: Any,
     metric_depth: Any = None,
     mesh_depth: Any = None,
-    erode_px: int = 2,
+    erode_px: int | None = None,
     smooth_iterations: int | None = None,
     backend: str = "auto",
 ) -> tuple[Any, dict[str, Any]]:
@@ -451,7 +465,9 @@ def photo_visibility_weights(
     else:
         occluded = np.zeros(len(v), dtype=bool)
 
-    mask_e = _erode(np, object_mask, erode_px)
+    if erode_px is None:
+        erode_px = photo_erode_px(width, height)
+    mask_e = _erode(np, object_mask, int(erode_px))
     in_mask = mask_e[iyc, ixc]
 
     inverse, n_u = weld_index(v)
