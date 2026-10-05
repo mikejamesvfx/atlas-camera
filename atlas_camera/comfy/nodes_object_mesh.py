@@ -199,6 +199,50 @@ def _mesh_item(np, mesh, validate=False):
             cols)
 
 
+def _mesh_texture(np, mesh, n_verts):
+    """The MESH's own UV layout + baked base-colour texture, or ``(None, None, why)``.
+
+    Core ApplyTextureToMesh sets ``mesh.uvs`` (N, 2), top-left / glTF
+    convention, and ``mesh.texture`` (H, W, 3) display-sRGB 0..1 (the voxel
+    colours BakeTextureFromVoxel sampled -- glTF baseColor is sRGB). ``why`` is
+    "" when there is simply no texture, else the reason one was rejected.
+    """
+    def arr(x):
+        if x is None:
+            return None
+        if hasattr(x, "detach"):
+            x = x.detach().cpu().float().numpy()
+        return np.asarray(x, dtype=np.float32)
+
+    uvs, tex = arr(getattr(mesh, "uvs", None)), arr(getattr(mesh, "texture", None))
+    if uvs is None or tex is None:
+        return None, None, ""
+    if uvs.ndim == 3:
+        uvs = uvs[0]
+    if tex.ndim == 4:
+        tex = tex[0]
+    uvs = uvs[:n_verts]
+    if uvs.ndim != 2 or uvs.shape != (n_verts, 2) or not np.isfinite(uvs).all():
+        return None, None, f"UVs {tuple(uvs.shape)} do not match {n_verts} vertices"
+    if tex.ndim != 3 or tex.shape[-1] < 3 or min(tex.shape[:2]) < 2:
+        return None, None, f"texture shape {tuple(tex.shape)} is not (H, W, 3)"
+    if tex.max(initial=0.0) > 1.5:      # 0..255 storage
+        tex = tex / 255.0
+    return uvs.astype(np.float64), np.clip(tex[..., :3], 0.0, 1.0), ""
+
+
+def _texture_data_uri(np, tex_srgb) -> str:
+    """(H, W, 3) sRGB 0..1 -> ``data:image/png;base64,...`` (8-bit)."""
+    import base64
+    import io
+
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.fromarray(np.round(np.clip(tex_srgb, 0.0, 1.0) * 255.0).astype(np.uint8)).save(
+        buf, format="PNG", optimize=False, compress_level=6)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 class AtlasImportGeneratedMesh:
     """🧩 Place a Pixal3D mesh in the solved scene -- the object's hidden sides.
 
@@ -232,7 +276,11 @@ class AtlasImportGeneratedMesh:
             "required": {
                 "solve": ("ATLAS_SOLVE",),
                 "mesh": ("MESH", {"tooltip": "Pixal3D mesh: VaeDecodeShapeTrellis -> "
-                                             "(Remesh/Decimate) -> PaintMesh for vertex colours."}),
+                                             "(Remesh/Decimate) -> PaintMesh for vertex colours, "
+                                             "OR -> UnwrapMesh -> BakeTextureFromVoxel -> "
+                                             "ApplyTextureToMesh for a UV texture (hidden side "
+                                             "painted per texel, not per vertex; not decimated "
+                                             "here)."}),
                 "object_crop": ("ATLAS_OBJECT_CROP",),
                 "depth": ("ATLAS_DEPTH_MAP", {"tooltip": "The SHARED scene depth (same one "
                                                          "the relief is built from)."}),
@@ -282,7 +330,7 @@ class AtlasImportGeneratedMesh:
             return (solve_out, "\n".join([
                 f"AtlasImportGeneratedMesh '{name}': REFUSED — malformed MESH: {why}; "
                 "solve passed through", *lines]), blank)
-        verts, faces, cols = arrays
+        verts, faces, cols, texture = arrays
 
         obj = _resolve_exclude_mask(object_mask, h, w)
         if obj is None or not bool(obj.any()):
@@ -309,12 +357,16 @@ class AtlasImportGeneratedMesh:
                                           *report_tail]), blank)
 
         world, weight, wstats = _photo_weights(np, cam_pts, faces, view, s, setup, obj, reg)
-        cols, colour_note = _grade_vertex_colours(torch, np, cols, weight, world, view, setup,
-                                                  image, match_colour)
+        cols, colour_note, gains = _grade_vertex_colours(torch, np, cols, weight, world, view,
+                                                         setup, image, match_colour, faces=faces)
+        if texture is not None and gains is not None:
+            # The SAME linear gain the vertex colours got, so the texture and
+            # the per-vertex fallback agree: per vertex -> interpolated per texel.
+            texture = (texture[0], _grade_texture(np, texture[0], texture[1], faces, gains))
 
         prim, why = _append_generated_prim(np, solve_out, name, world, faces, cols, weight,
                                            grade=grade, issues=issues, s=s, reg=reg,
-                                           crop=crop, wstats=wstats)
+                                           crop=crop, wstats=wstats, texture=texture)
         if prim is None:
             return (solve_out, "\n".join([head, f"REFUSED — mesh rejected: {why}", *lines,
                                           *report_tail]), blank)
@@ -371,11 +423,15 @@ def _validate_mesh_arrays(np, verts, faces):
 def _import_mesh_arrays(np, mesh, max_faces, lines):
     """The MESH as numpy, VALIDATED, then decimated to the face budget.
 
-    Returns ``((verts, faces, cols), "")`` or ``(None, reason)`` for a MESH
-    that cannot be placed; decimation (and a missed budget) is noted in
-    ``lines``.
+    Returns ``((verts, faces, cols, texture), "")`` or ``(None, reason)`` for
+    a MESH that cannot be placed; decimation (and a missed budget) is noted in
+    ``lines``. ``texture`` is ``(uvs, tex_srgb)`` for a UV-textured MESH (core
+    UnwrapMesh -> BakeTextureFromVoxel -> ApplyTextureToMesh), else None. A
+    textured mesh is NEVER cluster-decimated here: merging vertices would
+    scramble its UV layout, so the face budget is reported instead.
     """
     from atlas_camera.core.generated_mesh import cluster_decimate
+    from atlas_camera.core.uv_bake import sample_texture_at_uvs
 
     try:
         verts, faces, cols = _mesh_item(np, mesh, validate=True)
@@ -390,6 +446,21 @@ def _import_mesh_arrays(np, mesh, max_faces, lines):
         lines.append(f"warning: {len(cols)} vertex colours for {len(verts)} vertices — "
                      "colours dropped (hidden side painted neutral grey)")
         cols = None
+    uvs, tex, tex_why = _mesh_texture(np, mesh, len(verts))
+    if tex_why:
+        lines.append(f"warning: MESH texture ignored — {tex_why}; using vertex colours")
+    if tex is not None:
+        if cols is None:
+            # The per-vertex fallback (exporters without a texture path, the
+            # colour grade, old viewports) comes from the texture itself.
+            cols = sample_texture_at_uvs(tex, uvs).astype(np.float64)
+        lines.append(f"UV texture {tex.shape[1]}x{tex.shape[0]} kept: hidden side painted "
+                     "from the model's baked texture")
+        if len(faces) > int(max_faces):
+            lines.append(f"warning: {len(faces)} faces > max_faces {int(max_faces)} — a UV-"
+                         "textured mesh is not decimated here (it would scramble the UVs); "
+                         "lower DecimateMesh BEFORE UnwrapMesh to shrink it")
+        return (verts, faces, cols, (uvs, tex)), ""
     n_in = len(faces)
     verts, faces, cols, dstats = cluster_decimate(
         verts, faces, max_faces=int(max_faces), colours=cols, return_stats=True)
@@ -400,7 +471,7 @@ def _import_mesh_arrays(np, mesh, max_faces, lines):
         lines.append(f"warning: decimation MISSED the face budget — {len(faces)} faces > "
                      f"max_faces {int(max_faces)} after {dstats['rounds']} rounds; the "
                      "payload is larger than asked (decimate upstream with DecimateMesh)")
-    return (verts, faces, cols), ""
+    return (verts, faces, cols, None), ""
 
 
 def _register_scale(verts, faces, crop, view, setup, obj, rests_on_ground):
@@ -478,10 +549,36 @@ def _photo_weights(np, cam_pts, faces, view, s, setup, obj, reg):
     return world, weight, wstats
 
 
-def _grade_vertex_colours(torch, np, cols, weight, world, view, setup, image, match_colour):
+def _grade_texture(np, uvs, tex, faces, gains):
+    """Apply a LINEAR gain to an sRGB texture: 3 global values, or (N, 3) per
+    vertex interpolated per texel through the UV layout (core.uv_bake); texels
+    no triangle covers (the gutter) take the mean gain."""
+    from atlas_camera.core.srgb import linear_to_srgb, srgb_to_linear
+    from atlas_camera.core.uv_bake import rasterize_uv
+
+    g = np.asarray(gains, dtype=np.float64)
+    lin = srgb_to_linear(np.asarray(tex, dtype=np.float64))
+    if g.ndim == 1:
+        return np.clip(linear_to_srgb(lin * g[None, None, :]), 0.0, 1.0)
+    h, w = lin.shape[:2]
+    fi, bary = rasterize_uv(faces, uvs, (w, h))
+    per = np.broadcast_to(g.mean(axis=0), (h, w, 3)).copy()
+    cov = fi >= 0
+    tri = np.asarray(faces, dtype=np.int64)[fi[cov]]
+    per[cov] = (bary[cov].astype(np.float64)[:, :, None] * g[tri]).sum(axis=1)
+    return np.clip(linear_to_srgb(lin * per), 0.0, 1.0)
+
+
+def _grade_vertex_colours(torch, np, cols, weight, world, view, setup, image, match_colour,
+                          faces=None):
     """Hidden-side colour: grey without vertex colours, else optionally graded
-    onto the plate. Returns ``(colours, note)``."""
-    from atlas_camera.core.generated_mesh import match_vertex_colours
+    onto the plate. Returns ``(colours, note, gains)``; ``gains`` is the applied
+    LINEAR gain -- (N, 3) per vertex when ``faces`` allow the local match
+    (core.generated_mesh.local_colour_gains), else 3 global values -- or None
+    when no grade was applied."""
+    gains = None
+    from atlas_camera.core.generated_mesh import local_colour_gains, match_vertex_colours
+    from atlas_camera.core.srgb import linear_to_srgb, srgb_to_linear
 
     w, h = int(setup.width), int(setup.height)
     colour_note = "no vertex colours on the MESH — hidden side painted neutral grey " \
@@ -494,21 +591,38 @@ def _grade_vertex_colours(torch, np, cols, weight, world, view, setup, image, ma
         fwd = np.maximum(-vmc[:, 2], 1e-9)
         ix = np.clip(np.rint(setup.cx + setup.fx * vmc[:, 0] / fwd), 0, w - 1).astype(int)
         iy = np.clip(np.rint(setup.cy - setup.fy * vmc[:, 1] / fwd), 0, h - 1).astype(int)
-        cols, crep = match_vertex_colours(cols, weight, img[iy, ix])
+        raw = np.asarray(cols, dtype=np.float64)
+        graded, crep = match_vertex_colours(raw, weight, img[iy, ix])
         colour_note = (f"vertex colours graded onto the plate: gain "
                        f"{[round(g, 3) for g in crep['gain']]} over "
                        f"{crep['seen_vertices']} seen vertices"
                        + (" (CLAMPED)" if any(crep["clamped"]) else "")
                        + ("" if crep["applied"] else " — too few seen vertices, not applied"))
+        cols = graded
+        if crep["applied"]:
+            gains = [float(g) for g in crep["gain"]]
+            if faces is not None:
+                # LOCAL match on top: the global gain leaves a seam wherever
+                # the model drifts in hue/exposure; this one fades to it.
+                local, lrep = local_colour_gains(world, faces, raw, weight, img[iy, ix],
+                                                 global_gain=gains)
+                cols = np.clip(linear_to_srgb(srgb_to_linear(raw) * local), 0.0, 1.0)
+                gains = local
+                colour_note += (f"; LOCAL match near the seam (gain p5..p95 "
+                                f"{lrep['gain_p05']}..{lrep['gain_p95']}, fades to the "
+                                "global gain away from the photo)")
     else:
         colour_note = "vertex colours used as generated (match_colour off)"
-    return cols, colour_note
+    return cols, colour_note, gains
 
 
 def _append_generated_prim(np, solve_out, name, world, faces, cols, weight, *, grade, issues,
-                           s, reg, crop, wstats):
+                           s, reg, crop, wstats, texture=None):
     """APPEND the mesh as a PROXY_ROLE primitive on ``solve_out``.
 
+    ``texture`` ``(uvs, tex_srgb)`` adds the model's own UV layout
+    (``texture_uvs``, top-left convention) and its graded base-colour texture
+    (``texture_b64``, PNG data URI) beside the per-vertex colours.
     Returns ``(prim, None)``, or ``(None, reason)`` when the mesh is rejected.
     """
     from atlas_camera.blender.measured import meshes_to_primitives
@@ -528,6 +642,12 @@ def _append_generated_prim(np, solve_out, name, world, faces, cols, weight, *, g
     meta["generated_rel_mad"] = float(reg["rel_mad"])
     meta["generated_fov_deg"] = float(crop.fov_deg)
     meta["photo_fraction"] = float(wstats["photo_fraction"])
+    if texture is not None:
+        uvs_t, tex_t = texture
+        if len(uvs_t) == len(world):
+            meta["texture_uvs"] = np.round(np.asarray(uvs_t).reshape(-1), 5).tolist()
+            meta["texture_b64"] = _texture_data_uri(np, tex_t)
+            meta["texture_size"] = [int(tex_t.shape[1]), int(tex_t.shape[0])]
     solve_out.projection_scene.proxy_geometry.append(prim)
     dbg = solve_out.projection_scene.debug_metadata
     dbg.setdefault("generated_objects", []).append({
@@ -745,6 +865,11 @@ class AtlasHDRVertexTransfer:
             p.metadata["vertex_colors_hdr"] = np.round(hdr_vc.reshape(-1), 4).tolist()
             p.metadata["vertex_colors_hdr_space"] = "ACEScg"
             p.metadata["vertex_colors_hdr_residual_stops"] = round(curve["residual_stops"], 4)
+            if p.metadata.get("texture_b64"):
+                # A UV-textured object: the exporter bakes its texture and runs
+                # it through this SAME curve (AtlasSceneTo3D's texture_hdr EXR).
+                p.metadata["hdr_curve"] = {k: curve[k] for k in
+                                           ("log2_x", "log2_y", "residual_stops", "space")}
             lines.append(f"- {p.name}: {len(vc)} vertex colours -> ACEScg linear, max "
                          f"{float(hdr_vc.max()):.2f}, {int((hdr_vc.max(-1) > 1).sum())} above 1.0")
         lines.append("the hidden side's HDR is the plate's conversion curve applied to a "

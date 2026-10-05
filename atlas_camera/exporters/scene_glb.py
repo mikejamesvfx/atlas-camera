@@ -486,6 +486,62 @@ def _write_exr_sidecar(path: Path, pil: Any, plate_ref: Any) -> dict[str, Any]:
     return info
 
 
+def _has_generated_texture(prim: Any, mesh: Any) -> bool:
+    """Does this generated object carry its own UV layout + baked texture?"""
+    md = prim.metadata or {}
+    uvs = md.get("texture_uvs") or []
+    return bool(md.get("texture_b64")) and len(uvs) == 2 * len(mesh.vertices)
+
+
+def _generated_texture_layer(prim: Any, mesh: Any, plate: Any, solve: Any, extras: dict,
+                             prefix: str, notes: list[str]) -> tuple[SceneLayer, Any] | None:
+    """A UV-textured generated object as ONE textured layer: the model's own
+    UVs, and its texture with the photo baked in where the solved camera saw
+    the surface (core.uv_bake) -- what the viewport shader shows, as a texture
+    a DCC can use. Returns ``(layer, baked_srgb)``, or None (with a note) when
+    the bake cannot run, so the caller falls back to the vertex-colour path.
+    """
+    import numpy as np
+
+    from atlas_camera.core.uv_bake import bake_photo_into_uv
+
+    md = prim.metadata or {}
+    try:
+        gen = np.asarray(_decode_data_uri(md["texture_b64"]), dtype=np.float32) / 255.0
+        uvs_tl = np.asarray(md["texture_uvs"], dtype=np.float64).reshape(-1, 2)
+        intr = solve.camera.intrinsics
+        view = np.asarray(solve.camera.extrinsics.camera_view_matrix, dtype=np.float64)
+        sw = float(intr.image_width or plate.size[0])
+        sh = float(intr.image_height or plate.size[1])
+        kx, ky = plate.size[0] / sw, plate.size[1] / sh       # solve raster -> plate px
+        fx = float(intr.fx_px or intr.fy_px) * kx
+        fy = float(intr.fy_px or intr.fx_px) * ky
+        cx = float(intr.cx_px if intr.cx_px is not None else sw / 2) * kx
+        cy = float(intr.cy_px if intr.cy_px is not None else sh / 2) * ky
+        weight = (mesh.photo_weight if mesh.photo_weight is not None
+                  else np.zeros(len(mesh.vertices)))
+        photo = np.asarray(plate.convert("RGB"), dtype=np.float32) / 255.0
+        baked, stats = bake_photo_into_uv(
+            mesh.vertices, mesh.faces, uvs_tl, gen, photo, weight,
+            view_matrix=view, fx=fx, fy=fy, cx=cx, cy=cy)
+    except Exception as exc:  # noqa: BLE001 - a failed bake falls back, never fails
+        notes.append(f"layer {prefix}{prim.name}: texture bake failed "
+                     f"({type(exc).__name__}: {exc}) - hidden side written as vertex colour")
+        return None
+    from PIL import Image
+    img = Image.fromarray(np.round(np.clip(baked, 0.0, 1.0) * 255.0).astype(np.uint8))
+    obj_uvs = np.stack([uvs_tl[:, 0], 1.0 - uvs_tl[:, 1]], axis=1)   # -> OBJ bottom-left
+    layer_extras = {**{k: v for k, v in extras.items() if not k.startswith("exr")},
+                    "atlas_layer": f"{prefix}{prim.name}",
+                    "atlas_plate": f"{prim.name} texture",
+                    "plate_size": [int(img.size[0]), int(img.size[1])],
+                    "generated_texture": "model UV texture; photo baked in where the solved "
+                                         "camera saw the surface",
+                    "texture_photo_fraction": stats["photo_fraction"]}
+    return SceneLayer(name=f"{prefix}{prim.name}", vertices=mesh.vertices, faces=mesh.faces,
+                      uvs=obj_uvs, image_bytes=_png_bytes(img), extras=layer_extras), baked
+
+
 def write_float_ply(path: Path, vertices: Any, faces: Any, colors: Any) -> str:
     """Binary little-endian PLY with FLOAT vertex colour (r, g, b may exceed 1).
 
@@ -694,6 +750,16 @@ def collect_scene_layers(
                 notes.append(f"layer {prefix}{prim.name}: dropped - no mesh payload "
                              "(vertices/faces) on the primitive")
                 continue
+            if pil is not None and _has_generated_texture(prim, mesh):
+                textured = _generated_texture_layer(prim, mesh, pil, solve, extras, prefix,
+                                                    notes)
+                if textured is not None:
+                    layer, baked = textured
+                    layers.append(layer)
+                    curve = (prim.metadata or {}).get("hdr_curve")
+                    if curve and exr_root is not None:
+                        scene.jobs.append(_texture_hdr_job(prim, baked, curve, layer.extras))
+                    continue
             uvs = mesh.uvs if getattr(mesh.uvs, "size", 0) else None
             layer_extras = {**extras, "atlas_layer": f"{prefix}{prim.name}"}
             if job is not None:
@@ -724,6 +790,30 @@ def collect_scene_layers(
 
         return _SidecarJob(path=ply_path, targets=[layer_extras], known=known, write=write,
                            fail_note=lambda exc: (f"HDR vertex-colour PLY for {prim.name} "
+                                                  f"skipped: {exc}"))
+
+    def _texture_hdr_job(prim: Any, baked: Any, curve: dict, layer_extras: dict) -> _SidecarJob:
+        """The baked object texture through AtlasHDRVertexTransfer's fitted
+        SDR->HDR curve, as an ACEScg EXR in the object's UV layout."""
+        exr_path = exr_root / sidecar_name(prim.name, "_texture_hdr.exr")
+        rel = output_rel(exr_path)
+        known: dict[str, Any] = ({"texture_hdr_exr_output_path": rel} if rel else {})
+        known.update(texture_hdr_exr=exr_path.name, texture_hdr_space="ACEScg")
+
+        def write() -> tuple[dict[str, Any], dict[str, Any]]:
+            from atlas_camera.core.hdr_transfer import apply_curve
+            from atlas_camera.plate.oiio_io import write_exr
+            exr_root.mkdir(parents=True, exist_ok=True)
+            write_exr(str(exr_path), apply_curve(curve, baked), bit_depth="half",
+                      source_colorspace="ACEScg")
+            return dict(known), {"plate": f"{prim.name} texture", "exr": exr_path.name,
+                                 "exr_colorspace": "ACEScg (object UV texture through the "
+                                                   "plate's fitted SDR->HDR curve)",
+                                 "exr_origin": "AtlasHDRVertexTransfer curve",
+                                 "scene_referred": False}
+
+        return _SidecarJob(path=exr_path, targets=[layer_extras], known=known, write=write,
+                           fail_note=lambda exc: (f"HDR texture EXR for {prim.name} "
                                                   f"skipped: {exc}"))
 
     solve_scene = solve.projection_scene

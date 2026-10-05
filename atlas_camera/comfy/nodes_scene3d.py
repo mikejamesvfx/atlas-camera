@@ -388,6 +388,9 @@ def _export_report(glb_path, mb, written, sidecars, notes, write_exr, camera_inf
         if s["exr"].endswith(".ply"):
             lines.append(f"- PLY {s['exr']}: HDR vertex colour, {s['exr_colorspace']}")
             continue
+        if s.get("exr_origin") == "AtlasHDRVertexTransfer curve":
+            lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']}")
+            continue
         if s.get("exr_origin") == "hdr_plate":
             lines.append(f"- EXR {s['exr']}: {s['exr_colorspace']} (HDR plate "
                          f"{s.get('exr_source', '')}, scene-referred)")

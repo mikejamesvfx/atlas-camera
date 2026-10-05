@@ -297,6 +297,66 @@ def vertex_normals(vertices: Any, faces: Any) -> Any:
     return np.where(norm > 1e-12, n / np.maximum(norm, 1e-12), 0.0)
 
 
+#: Width of the photo / generated-colour ramp, as a fraction of the object's
+#: bounding-box diagonal. A FIXED iteration count made the ramp shrink with
+#: mesh density (found live 2026-10-05: at 198k faces the seam was one triangle
+#: row wide and jagged), so the iterations are derived from this.
+PHOTO_FEATHER_FRAC = 0.01
+
+#: Reach of the LOCAL colour match into the hidden side (fraction of the bbox
+#: diagonal); past it the gain fades to the single global one.
+LOCAL_GAIN_REACH_FRAC = 0.06
+
+#: Smoothing iterations are capped (each is two bincounts over 6F entries).
+MAX_SMOOTH_ITERATIONS = 400
+
+
+def weld_index(vertices: Any, *, rel_tol: float = 1e-6) -> tuple[Any, int]:
+    """``(inverse, n_unique)``: vertices at the same position share an index.
+
+    A UV-unwrapped mesh SPLITS its vertices along every chart seam, so its face
+    adjacency never crosses a seam: smoothing or normals computed on it are
+    per-chart (jaggies along chart boundaries). Analysis runs on the welded
+    graph; the mesh itself (and its UVs) is never changed.
+    """
+    np = _require_numpy()
+    v = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+    if not len(v):
+        return np.zeros(0, dtype=np.int64), 0
+    span = float(np.ptp(v, axis=0).max()) or 1.0
+    key = np.round(v / (span * rel_tol)).astype(np.int64)
+    _, inverse = np.unique(key, axis=0, return_inverse=True)
+    inverse = inverse.reshape(-1)
+    return inverse, int(inverse.max()) + 1
+
+
+def _welded(np: Any, values: Any, inverse: Any, n_unique: int) -> Any:
+    """Per-vertex values averaged onto welded vertices."""
+    vals = np.asarray(values, dtype=np.float64)
+    flat = vals.reshape(len(vals), -1)
+    cnt = np.bincount(inverse, minlength=n_unique).astype(np.float64)
+    out = np.stack([np.bincount(inverse, weights=flat[:, k], minlength=n_unique)
+                    for k in range(flat.shape[1])], axis=1) / np.maximum(cnt, 1.0)[:, None]
+    return out.reshape((n_unique,) + vals.shape[1:])
+
+
+def smoothing_iterations_for(vertices: Any, faces: Any, width_frac: float) -> int:
+    """Adjacency-smoothing iterations whose spread is ``width_frac`` of the
+    bbox diagonal: each ``0.5 * self + 0.5 * mean(neighbours)`` step spreads
+    by ~ edge / sqrt(2), so ``k ~ 2 * (width / mean_edge) ** 2``."""
+    np = _require_numpy()
+    v = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+    f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    if not len(f):
+        return 0
+    diag = float(np.linalg.norm(np.ptp(v, axis=0)))
+    e = np.linalg.norm(v[f[:, 1]] - v[f[:, 0]], axis=1)
+    edge = float(np.median(e[e > 0])) if (e > 0).any() else 0.0
+    if diag <= 0 or edge <= 0:
+        return 3
+    return int(np.clip(2.0 * (width_frac * diag / edge) ** 2, 3, MAX_SMOOTH_ITERATIONS))
+
+
 def _vertex_adjacency_smooth(np: Any, values: Any, faces: Any, iterations: int) -> Any:
     out = np.asarray(values, dtype=np.float64).copy()
     if iterations <= 0 or faces.size == 0:
@@ -307,11 +367,21 @@ def _vertex_adjacency_smooth(np: Any, values: Any, faces: Any, iterations: int) 
     b = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0],
                         faces[:, 0], faces[:, 1], faces[:, 2]])
     deg = np.bincount(a, minlength=n).astype(np.float64)
+    two_d = out.ndim == 2
+    cols = out if two_d else out[:, None]
     for _ in range(int(iterations)):
-        acc = np.bincount(a, weights=out[b], minlength=n)
-        nb = np.where(deg > 0, acc / np.maximum(deg, 1.0), out)
-        out = 0.5 * out + 0.5 * nb
-    return out
+        nb = np.empty_like(cols)
+        for k in range(cols.shape[1]):
+            acc = np.bincount(a, weights=cols[b, k], minlength=n)
+            nb[:, k] = np.where(deg > 0, acc / np.maximum(deg, 1.0), cols[:, k])
+        cols = 0.5 * cols + 0.5 * nb
+    return cols if two_d else cols[:, 0]
+
+
+def _welded_faces(np: Any, faces: Any, inverse: Any) -> Any:
+    f = inverse[np.asarray(faces, dtype=np.int64).reshape(-1, 3)]
+    keep = (f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])
+    return f[keep]
 
 
 def photo_visibility_weights(
@@ -329,7 +399,7 @@ def photo_visibility_weights(
     metric_depth: Any = None,
     mesh_depth: Any = None,
     erode_px: int = 2,
-    smooth_iterations: int = 3,
+    smooth_iterations: int | None = None,
     backend: str = "auto",
 ) -> tuple[Any, dict[str, Any]]:
     """Per-vertex ``photo_weight`` in [0, 1]: did the solved camera SEE it?
@@ -338,8 +408,11 @@ def photo_visibility_weights(
     (self z-buffer; sign-free so inconsistent winding cannot flip it), is not
     behind nearer scene content (Atlas metric depth), falls inside the eroded
     object mask, and faces the camera better than :data:`MIN_PHOTO_FACING`.
-    Smoothed over vertex adjacency so the photo/vertex-colour seam is a ramp,
-    not a stair. ``mesh_depth`` (the placed mesh's z-buffer) is rasterized
+    Smoothed over the WELDED vertex adjacency (:func:`weld_index`: a UV
+    unwrap's split seams would otherwise smooth each chart on its own) so the
+    photo/vertex-colour seam is a ramp, not a stair. ``smooth_iterations``
+    None = a ramp :data:`PHOTO_FEATHER_FRAC` of the object wide, whatever the
+    mesh density. ``mesh_depth`` (the placed mesh's z-buffer) is rasterized
     here when not supplied.
     """
     np = _require_numpy()
@@ -377,15 +450,22 @@ def photo_visibility_weights(
     mask_e = _erode(np, object_mask, erode_px)
     in_mask = mask_e[iyc, ixc]
 
+    inverse, n_u = weld_index(v)
+    fw = _welded_faces(np, f, inverse)
+    vw = _welded(np, v, inverse, n_u)
     c2w = np.linalg.inv(vm)
     to_cam = c2w[:3, 3][None, :] - v
     to_cam /= np.maximum(np.linalg.norm(to_cam, axis=1, keepdims=True), 1e-12)
-    facing = np.abs(np.sum(vertex_normals(v, f) * to_cam, axis=1))
+    # welded normals: a split UV seam would otherwise give each chart its own
+    normals = vertex_normals(vw, fw)[inverse]
+    facing = np.abs(np.sum(normals * to_cam, axis=1))
     facing_ok = facing > MIN_PHOTO_FACING
 
     hard = in_frame & self_front & ~occluded & in_mask & facing_ok
-    weight = np.clip(_vertex_adjacency_smooth(np, hard.astype(np.float64), f,
-                                              smooth_iterations), 0.0, 1.0)
+    iters = (smoothing_iterations_for(vw, fw, PHOTO_FEATHER_FRAC)
+             if smooth_iterations is None else int(smooth_iterations))
+    hard_w = _welded(np, hard.astype(np.float64), inverse, n_u)
+    weight = np.clip(_vertex_adjacency_smooth(np, hard_w, fw, iters), 0.0, 1.0)[inverse]
     stats = {
         "n_vertices": int(len(v)),
         "photo_fraction": float((weight >= PHOTO_WEIGHT_SPLIT).mean()) if len(v) else 0.0,
@@ -394,8 +474,63 @@ def photo_visibility_weights(
         "scene_occluded": int((in_frame & occluded).sum()),
         "outside_mask": int((in_frame & ~in_mask).sum()),
         "grazing": int((in_frame & ~facing_ok).sum()),
+        "smooth_iterations": int(iters),
+        "welded_vertices": int(n_u),
     }
     return weight, stats
+
+
+def local_colour_gains(
+    vertices: Any,
+    faces: Any,
+    vertex_colours_srgb: Any,
+    photo_weight: Any,
+    plate_samples_srgb: Any,
+    *,
+    global_gain: Any = (1.0, 1.0, 1.0),
+    reach_frac: float = LOCAL_GAIN_REACH_FRAC,
+    seen_min: float = 0.9,
+) -> tuple[Any, dict[str, Any]]:
+    """Per-vertex LINEAR gain matching the model's colour to the photo LOCALLY.
+
+    One global gain per channel leaves a seam wherever the model's hue or
+    exposure drifts locally (found live 2026-10-05: teal-rust photo against a
+    pinker generated texture). Here the log ratio photo / model is measured on
+    vertices the camera saw, low-passed, and carried into the hidden side by
+    normalised diffusion over the WELDED adjacency: its confidence decays with
+    distance from the seen region, and the gain blends to ``global_gain`` as
+    it does. Ratios are clamped to :data:`COLOUR_GAIN_RANGE`.
+
+    Returns ``(gains (N, 3), stats)``.
+    """
+    np = _require_numpy()
+    v = np.asarray(vertices, dtype=np.float64).reshape(-1, 3)
+    f = np.asarray(faces, dtype=np.int64).reshape(-1, 3)
+    vc = srgb_to_linear(np.asarray(vertex_colours_srgb, dtype=np.float64)[:, :3])
+    plate = srgb_to_linear(np.asarray(plate_samples_srgb, dtype=np.float64)[:, :3])
+    w = np.asarray(photo_weight, dtype=np.float64).reshape(-1)
+    lo, hi = COLOUR_GAIN_RANGE
+    g0 = np.log2(np.clip(np.asarray(global_gain, dtype=np.float64), lo, hi))
+    inverse, n_u = weld_index(v)
+    fw = _welded_faces(np, f, inverse)
+    vw = _welded(np, v, inverse, n_u)
+    seen = (w >= seen_min) & (vc.min(axis=1) > 0.01) & (plate.min(axis=1) > 0.0)
+    ratio = np.zeros_like(vc)
+    ratio[seen] = np.log2(np.clip(plate[seen] / np.maximum(vc[seen], 1e-6), lo, hi))
+    num = _welded(np, ratio * seen[:, None], inverse, n_u)
+    den = _welded(np, seen.astype(np.float64), inverse, n_u)
+    iters = smoothing_iterations_for(vw, fw, reach_frac)
+    num = _vertex_adjacency_smooth(np, num, fw, iters)
+    den = _vertex_adjacency_smooth(np, den, fw, iters)
+    local = num / np.maximum(den, 1e-9)[:, None]
+    # den = smoothed seen-fraction (0..1): 1 inside the seen region, ~0.5 on
+    # its edge, decaying with distance -> confidence 1 up to the edge
+    conf = np.clip(2.0 * den, 0.0, 1.0)[:, None]
+    log_gain = conf * local + (1.0 - conf) * g0[None, :]
+    gains = np.exp2(np.clip(log_gain, np.log2(lo), np.log2(hi)))[inverse]
+    return gains, {"seen_vertices": int(seen.sum()), "iterations": int(iters),
+                   "gain_p05": np.percentile(gains, 5, axis=0).round(3).tolist(),
+                   "gain_p95": np.percentile(gains, 95, axis=0).round(3).tolist()}
 
 
 def match_vertex_colours(

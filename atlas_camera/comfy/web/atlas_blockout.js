@@ -619,6 +619,10 @@ const PROJECTION_VERTEX_SHADER = `
   attribute float atlasPhotoWeight;
   varying vec4 vAtlasVertexColor;
   varying float vAtlasPhotoWeight;
+  // A UV-textured generated object's OWN uv layout (top-left convention,
+  // like the texture it indexes); constant (0,0) everywhere else.
+  attribute vec2 atlasGenUv;
+  varying vec2 vAtlasGenUv;
   void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPos.xyz;
@@ -627,6 +631,7 @@ const PROJECTION_VERTEX_SHADER = `
     vAtlasRibbonT = atlasRibbonT;
     vAtlasVertexColor = atlasVertexColor;
     vAtlasPhotoWeight = atlasPhotoWeight;
+    vAtlasGenUv = atlasGenUv;
     // The mesh's BAKED uv, which for a transition-ribbon vertex is the frozen
     // silhouette texel. Everything else here re-derives its texel by projecting
     // the world position (vImagePx), and that is exactly wrong for a skirt: it
@@ -742,6 +747,11 @@ const PROJECTION_FRAGMENT_SHADER = `
   varying vec2 vAtlasBakedUv;
   varying vec4 vAtlasVertexColor;
   varying float vAtlasPhotoWeight;
+  varying vec2 vAtlasGenUv;
+  // Generated object's baked base-colour texture (SRGBColorSpace, so the GPU
+  // decodes it to LINEAR on sample, same as uTexture). 0 = vertex colour only.
+  uniform sampler2D uGenTexture;
+  uniform float uHasGenTexture;
   vec3 atlasSRGBToLinear(vec3 value) {
     return mix(pow((value + vec3(0.055)) / 1.055, vec3(2.4)), value / 12.92,
                vec3(lessThanEqual(value, vec3(0.04045))));
@@ -818,6 +828,9 @@ const PROJECTION_FRAGMENT_SHADER = `
     // of a discard. photo_weight feather taken here, in uniform control flow.
     bool hasVC = vAtlasVertexColor.a > 1.5;
     float pwFeather = max(fwidth(vAtlasPhotoWeight), 1e-3);
+    // Sampled here, in UNIFORM control flow (its mip level needs derivatives,
+    // undefined inside the hasVC branch below). Unbound -> three's empty texture.
+    vec3 genTexLin = texture2D(uGenTexture, vAtlasGenUv).rgb;
     vec4 fragCam = uAtlasViewMatrix * vec4(vWorldPos, 1.0);
     float fragCamZ = fragCam.z;
     if (fragCamZ >= -1e-5 && !hasVC) discard;     // behind the projector camera
@@ -1042,8 +1055,12 @@ const PROJECTION_FRAGMENT_SHADER = `
                                   clamp(vAtlasPhotoWeight, 0.0, 1.0));
       if (photoUnreachable) photoMix = 0.0;
       photoMix *= clamp(coverage, 0.0, 1.0);
-      col = vec4(mix(atlasSRGBToLinear(clamp(vAtlasVertexColor.rgb, 0.0, 1.0)),
-                     col.rgb, photoMix), 1.0);
+      // The model's own texture when it shipped one (per-texel detail on the
+      // hidden side); otherwise the per-vertex colour, blended across faces.
+      vec3 genLin = uHasGenTexture > 0.5
+        ? genTexLin
+        : atlasSRGBToLinear(clamp(vAtlasVertexColor.rgb, 0.0, 1.0));
+      col = vec4(mix(genLin, col.rgb, photoMix), 1.0);
       coverage = 1.0;
     }
     // Relight normal: the model's predicted WORLD normal (uNormalMap, already
@@ -1285,6 +1302,9 @@ function makeProjectionMaterial(data, texture, opts) {
       // = the geometry normal, so backward-compatible. Live-synced like lights.
       uBumpStrength: { value: 0 },
       uBumpScale: { value: 8.0 },   // luminance-gradient sampling offset in texels ("Scale")
+      // Generated object's own baked texture (per-mesh material only).
+      uGenTexture: { value: options.genTexture || null },
+      uHasGenTexture: { value: options.genTexture ? 1.0 : 0.0 },
     },
     vertexShader: PROJECTION_VERTEX_SHADER,
     fragmentShader: PROJECTION_FRAGMENT_SHADER,
@@ -1303,6 +1323,7 @@ function makeProjectionMaterial(data, texture, opts) {
     ...mat.defaultAttributeValues,
     atlasVertexColor: ATLAS_NO_VERTEX_COLOR.slice(),
     atlasPhotoWeight: [PHOTO_WEIGHT_DEFAULT],
+    atlasGenUv: [0.0, 0.0],
   };
   // Priority-driven depth bias (patches only — options.priority is unset for
   // the primary, which relies solely on its renderOrder sentinel instead).
@@ -1414,7 +1435,15 @@ function attachAtlasVertexColor(geo, entry) {
     // Never leave a stale buffer from an earlier attach on a reused geometry.
     if (geo?.attributes?.atlasVertexColor) geo.deleteAttribute("atlasVertexColor");
     if (geo?.attributes?.atlasPhotoWeight) geo.deleteAttribute("atlasPhotoWeight");
+    if (geo?.attributes?.atlasGenUv) geo.deleteAttribute("atlasGenUv");
     return geo;
+  }
+  // The model's own uv layout, only for a UV-textured generated object.
+  const guv = entry?.texture_uvs;
+  if (Array.isArray(guv) && guv.length === count * 2) {
+    geo.setAttribute("atlasGenUv", new THREE.BufferAttribute(new Float32Array(guv), 2));
+  } else if (geo?.attributes?.atlasGenUv) {
+    geo.deleteAttribute("atlasGenUv");
   }
   const colours = new Float32Array(count * 4);
   for (let i = 0; i < count; i++) {
@@ -1532,6 +1561,10 @@ function buildDerivedProxies(scene, data) {
     // the water plane and hillside behind a foreground object, 2026-08-16).
     mesh.userData.atlasCleanSource = e.metadata?.merged_from === "solve_b"
       || e.metadata?.paint_with === "clean_plate";
+    // A UV-textured generated object gets its OWN projection material (the
+    // primary's, plus its baked texture) -- see buildGeneratedMats.
+    mesh.userData.atlasGenTexB64 = (e.texture_b64 && geo.attributes?.atlasGenUv)
+      ? e.texture_b64 : "";
     mesh.name = e.name || "derived_proxy";
     // Sentinel above any patch renderOrder (see priorityToRenderOrder) — the
     // primary is implicitly highest priority per ProjectionSource's contract,
@@ -8102,6 +8135,47 @@ function buildNodeUI(node, containerEl) {
         (e) => e.type === "mesh" && e.metadata?.source === "depth_relief_mesh");
       const primaryRibbonSmudge = primaryReliefEntry?.metadata?.ribbon_smudge_px;
 
+      // UV-textured generated objects: the primary projection (same photo,
+      // depth, matte) plus the model's baked texture for the hidden side. One
+      // material per object; its photo texture is the PRIMARY's (shared), so a
+      // stale one disposes only itself and its own generated texture.
+      const buildGeneratedMats = (tex, dTex, matteTexture) => {
+        scene.traverse((c) => {
+          if (!c.userData?.atlasDerived) return;
+          const b64 = c.userData.atlasGenTexB64;
+          const stale = c.userData._projMaterial;
+          if (!b64) {
+            if (stale?.uniforms?.uHasGenTexture?.value > 0.5) {
+              stale.uniforms.uGenTexture.value?.dispose?.();
+              stale.dispose?.();
+              delete c.userData._projMaterial;
+            }
+            return;
+          }
+          new THREE.TextureLoader().load(b64, (gTex) => {
+            gTex.flipY = false;                  // uv origin top-left, like the bake
+            gTex.colorSpace = THREE.SRGBColorSpace;
+            const mat = makeProjectionMaterial(data, tex, {
+              primaryDepthTexture: dTex, matteTexture,
+              matteSoft: primaryMatteSoft,
+              ribbonSmudgePx: primaryRibbonSmudge,
+              genTexture: gTex,
+            });
+            const prev = c.userData._projMaterial;
+            c.userData._projMaterial = mat;
+            if (prev && prev !== mat) {
+              prev.uniforms?.uGenTexture?.value?.dispose?.();
+              prev.dispose?.();
+            }
+            if (projectionOn) applyProjection(true);
+          }, undefined, (err) => {
+            // Never silent: the object falls back to its per-vertex colour.
+            console.warn("[AtlasBlockout] generated-object texture failed to load "
+              + "(hidden side uses vertex colour):", err);
+          });
+        });
+      };
+
       const buildPrimaryMat = (dTex) => {
         loadProjectionTexture(data, (tex) => {
           loadMatteFromB64(primaryMatteB64, (matteTexture) => {
@@ -8111,6 +8185,7 @@ function buildNodeUI(node, containerEl) {
               matteSoft: primaryMatteSoft,
               ribbonSmudgePx: primaryRibbonSmudge,
             });
+            buildGeneratedMats(tex, dTex, matteTexture);
             if (projectionOn) applyProjection(true);
             if (old) { old.uniforms?.uTexture?.value?.dispose?.(); old.dispose(); }
           });
