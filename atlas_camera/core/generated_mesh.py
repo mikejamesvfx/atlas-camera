@@ -63,7 +63,11 @@ SCENE_DEPTH_BIAS_REL = 0.15
 
 #: Vertex-colour gain is clamped; a gain outside this is a mismatch the
 #: report should show, not a correction to apply.
-COLOUR_GAIN_RANGE = (0.5, 2.0)
+COLOUR_GAIN_RANGE = (0.25, 4.0)
+# Was (0.5, 2.0) until found live 2026-10-05: a black SUV in a dusk RAW wanted
+# a gain below 0.5 (the model textures it as if lit at a normal exposure), so
+# the clamp left the hidden side ~2x too bright. Two stops each way still
+# flags a genuinely wrong match.
 
 MIN_REGISTRATION_PX = 100
 

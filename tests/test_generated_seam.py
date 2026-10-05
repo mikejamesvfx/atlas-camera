@@ -92,3 +92,20 @@ def test_local_gain_is_continuous_across_a_split_seam():
     for k in range(len(v)):
         twins = np.flatnonzero(inv == inv[k])
         assert np.allclose(g[twins], g[k])
+
+
+def test_colour_gain_range_allows_a_dusk_plate_but_still_flags_a_wild_one():
+    """Found live 2026-10-05 (black SUV, dusk RAW): the needed gain was < 0.5
+    and the old (0.5, 2.0) clamp left the hidden side ~2x too bright."""
+    from atlas_camera.core.generated_mesh import match_vertex_colours
+    from atlas_camera.core.srgb import linear_to_srgb, srgb_to_linear
+
+    n = 64
+    vc = np.full((n, 3), 0.6)
+    w = np.ones(n)
+    for gain, clamped in ((0.4, False), (0.1, True)):
+        plate = linear_to_srgb(srgb_to_linear(vc) * gain)
+        _, rep = match_vertex_colours(vc, w, plate)
+        assert rep["clamped"] == [clamped] * 3
+        if not clamped:
+            assert np.allclose(rep["gain"], gain, atol=1e-3)
