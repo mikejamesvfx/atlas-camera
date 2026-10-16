@@ -211,6 +211,12 @@ pending (V-1).
   Live in ComfyUI (2026-10-03, default 2x2 workflow): seam step test worst 0.88x
   (PRE-WINDOWING whole-edge score, before the ACEScg SDR comparison -- re-measure), matches
   the offline reference to 0.004 stops median; confirmed in Nuke.
+  **Re-measured 2026-10-16 (V-1 closed for the 2x2 default):** windowed and
+  SDR-controlled in ACEScg, the same plate scores **1.14x** (worst `z00|z01`,
+  1.306 stops against a 1.146-stop random-line p90) and the cathedral plate
+  **0.82x**. Both PASS the 1.5x gate with nothing flagged. The score went UP
+  (0.88 -> 1.14) because windowing stopped a bright half and a dark half of one
+  edge cancelling, exactly as the windowing change intended.
 - **Outpaint ring smear** (clean-plate / sky layers): edge replication across a
   1024 px frame-outpaint ring read as stripes; ring ripple **5.70% -> 0.22%** live,
   real plate unchanged at 0.55%.
@@ -219,6 +225,194 @@ pending (V-1).
   UVs would give it a texture atlas with no scene context to judge highlights by. The
   plate's own SDR->HDR curve is fitted from the pixel-aligned pair (ACEScg, log-binned,
   monotone) and applied to the vertex colours; live: 23,331 vertices, 184 above 1.0.
+
+## What the zones buy — the zone ablation, run 2026-10-16
+
+Design: `docs/designs/matrixzone-hdr-zone-ablation.md` (approved 2026-10-03).
+The question: `sdr_detail_transfer` rebuilds every UNclipped pixel as
+`sdr * 2**ratio_smooth` through a guided filter at radius 64 px, so outside the
+clipped highlights the zone clips survive only through that filter's slope and
+offset. How much of the delivered EXR actually depends on the 4K-tier zones,
+and not on the render/4 global pass?
+
+**Answer: most of it. The zones are not redundant outside the clipped area, and
+"crops only where the SDR clips" would be SLOWER than the full run, not faster.**
+
+### How it was measured
+
+`AtlasMatrixZoneStitch` now writes its inputs when `ATLAS_MATRIXZONE_DUMP_DIR`
+is set — `global.npy`, `zone_NN.npy` (each clip already reduced to its one
+image, exactly what the stitch consumes), `sdr.npy`, `sdr_global.npy` (the SDR
+the global pass was given, rebuilt with the split's own torch ops),
+`plan.json` and `params.json` (every stitch / destripe / transfer value the run
+used). Unset, nothing is written. The env-var read and the file writing live in
+the comfy node, never in `core/` (review R2-6); `core.matrixzone` gained only
+`sdr_transfer_keep_mask`, the feathered mask factored out of
+`sdr_detail_transfer` so the analysis and the function share one definition
+(review R2-7 is met by `params.json`, and the handle round-trips through JSON
+losslessly — pinned).
+
+`tools/matrixzone_zone_ablation.py` replays the dump offline through the SAME
+chain (stitch -> band destripe -> local destripe -> `sdr_detail_transfer` ->
+seam step test), replacing only the ZONE INPUTS and keeping the dumped global
+pass in the global slot, so everything downstream is byte-for-byte the live
+one. `tests/test_matrixzone_zone_ablation.py` pins that a V1 replay reproduces
+the live node's plate to a max relative error below 1e-5.
+
+*Specification resolved while executing (the design left R2-1 open).* V3 blends
+in log2 at the zone inputs, before the stitch, with a 128 px feather around
+`dilate(C, 128)`. V4 does the same, with the curve applied to the full-
+resolution SDR instead of the upsampled global; V4 keeps the dumped global pass
+because approach C fits its curve FROM that pass, so a shipped C still runs it.
+`sdr_detail_transfer` runs on every variant's result.
+
+*Timing source (review R2-5).* ComfyUI's websocket stream, timestamped client
+side: `executing` gives node boundaries and `progress` resets once per sampler
+run, so the five LTX clips are separable. The cathedral run decomposes cleanly;
+the machine run's websocket dropped mid-load and its per-clip split is partly
+derived (below), which is why the runtime model is quoted with its inputs.
+
+### The two live runs
+
+| | machine plate | cathedral plate |
+|---|---|---|
+| file | `atlasMachine_8k.jpg` | `atlas_cathedral_nave.png` |
+| plate / render | 7680x4512 / 7680x4608 | 3840x2160 / 3840x2176 |
+| zone / global | 3904x2368 (4K tier) / 1920x1152 | 1984x1152 / 960x544 |
+| total | **875.9 s cold** (14 min 36 s) | **193.1 s warm** |
+| model load -> first sampler step | 191.9 s | 51.7 s |
+| sampler per clip | not separable (see above) | 12.9 s global; 28.7 / 20.0 / 17.7 / 19.4 s zones |
+| clipped `keep > 0.5` | 14.2% | 2.2% |
+| seam worst (windowed, SDR-controlled) | 1.14x | 0.82x |
+
+The second plate was to have scattered small highlights rather than the machine
+plate's sky band, and the design left the choice to the user "from the V91
+CameraRaw captures". **ComfyUI_V91 no longer exists on disk.** Of what is in
+V135's `input/`, the clipped mask was measured on every plate at or above 4K:
+the machine plate's largest blob is 88.4% of its clipped area, `DSC_2245` 99.7%,
+`8245563064` 66.9%, `mj_qwen21_i2v_CP_5k_01` 75.3% — all sky bands — while the
+cathedral nave's largest blob is 30.5% with 58 blobs of 100 px or more. So the
+cathedral is the scattered plate. Caveat: a 2x2 on a 4K plate puts the global
+pass at 960x544 instead of 1920x1152, a WEAKER anchor than the headline case,
+which biases toward the zones mattering — so the cathedral agreeing with the
+machine plate is the conservative direction, not a free confirmation.
+
+### Regions (plate resolution, disjoint, covering)
+
+`C` is `sdr_transfer_keep_mask > 0.5` (where the HDR's own pixels are kept),
+`T` is `dilate(keep > 0, 128) \ C` (the guided filter's 2r reach), `U` the rest.
+
+| plate | C | T | U |
+|---|---|---|---|
+| machine 8K | 14.2% | 40.2% | 45.6% |
+| cathedral 4K | 2.2% | 34.4% | 63.4% |
+
+That by itself dents the design's premise 3: on the machine plate "only where
+the SDR clips" already means C + T = 54% of the plate.
+
+### |log2 luminance| against V1, in stops (p50 / p95 / p99)
+
+| plate | variant | C | T | U |
+|---|---|---|---|---|
+| machine 8K | V2 global-ratio | 0.041 / 0.394 / 0.953 | 0.070 / 0.817 / 1.474 | 0.119 / 0.660 / **1.182** |
+| | V3 global + clipped crops | 0.001 / 0.022 / 0.059 | 0.022 / 0.405 / 0.910 | 0.116 / 0.634 / **1.131** |
+| | V4 global curve | 0.001 / 0.018 / 0.049 | 0.017 / 0.173 / 0.355 | 0.058 / 0.375 / **0.637** |
+| cathedral 4K | V2 global-ratio | 0.270 / 1.406 / 2.283 | 0.099 / 0.420 / 0.645 | 0.097 / 0.444 / **0.724** |
+| | V3 global + clipped crops | 0.009 / 0.054 / 0.119 | 0.026 / 0.230 / 0.418 | 0.096 / 0.441 / **0.722** |
+| | V4 global curve | 0.008 / 0.030 / 0.056 | 0.013 / 0.091 / 0.186 | 0.036 / 0.214 / **0.369** |
+
+Share of each region moved by more than 0.05 / 0.10 stops — how WIDESPREAD the
+change is, which a percentile does not say:
+
+| plate | variant | C | T | U |
+|---|---|---|---|---|
+| machine 8K | V2 | 42.7% / 19.6% | 57.5% / 41.6% | **73.9% / 55.8%** |
+| | V3 | 1.5% / 0.1% | 30.6% / 19.0% | 73.3% / 54.9% |
+| | V4 | 1.0% / 0.1% | 20.7% / 10.4% | 53.3% / 36.1% |
+| cathedral 4K | V2 | 88.5% / 78.1% | 71.7% / 49.5% | **72.2% / 48.9%** |
+| | V3 | 6.0% / 1.6% | 35.4% / 19.3% | 71.9% / 48.3% |
+| | V4 | 1.3% / 0.1% | 13.4% / 4.2% | 39.2% / 18.5% |
+
+Drop the zones (V2) and about three quarters of the UNCLIPPED plate moves by
+more than the 0.05-stop bar, and about half by more than 0.10 stops — on both
+plates, at 14% clipped and at 2% clipped. The median in U is 0.12 / 0.10 stops,
+so this is not a tail: the whole region shifts. Codex's challenge to premise 2
+is upheld, and more strongly than it was put: the guided filter reduces the
+dependency on the zones, it does not come close to removing it. Looked at as a
+picture, the V1 - V2 difference is structured — it rides on the machine's
+metalwork and the grass, not a flat offset — so it is not something a grade
+takes out.
+
+V3 is V2 in U by construction and tracks it there; what it shows is that the
+clipped core is reproduced from zone pixels alone (C p99 0.059 / 0.119 stops).
+V4 is the best of the three everywhere and still 7-13x over the bar in U. Its
+own fit says why: one monotone SDR->HDR curve leaves a median residual of
+**0.197 stops** (machine) / **0.278 stops** (cathedral) against the global pass
+it was fitted on, so the conversion is not a global tone curve.
+
+### The seam score does not discriminate here
+
+| plate | V1 | V2 | V3 | V4 |
+|---|---|---|---|---|
+| machine 8K | 1.14x | 1.30x | 1.29x | 1.36x |
+| cathedral 4K | 0.82x | 0.99x | 0.79x | 0.82x |
+
+Nothing is flagged (gate 1.5x) on any variant of either plate. V2 is seam-free
+by construction — one continuous field cropped four ways — and still scores
+HIGHER than V1 on both plates, because the step at the seam barely moves
+(machine: 1.306 -> 1.353 stops) while the random-line baseline falls
+(1.146 -> 1.044). At these levels the ratio is reading content, not seams, so
+the seam test cannot rank these variants and was not used to. For V3 and V4 it
+could only ever show a seam where a seam line crosses `dilate(C, 128)`; V4's
+fill is a global function of the SDR and cannot produce one at all.
+
+### Approach B would be slower
+
+A greedy cover of `dilate(C, 128)` with zone-tier crops on 64-clean origins:
+
+| plate | crops | crop area vs render | projected B | vs live |
+|---|---|---|---|---|
+| machine 8K | 6 | 1.57x | 1220 s | **1.35x** |
+| cathedral 4K | 6 | 1.64x | 212 s | **1.29x** |
+
+Six crops to cover what four zones already cover. The reviewer's R2-4 arithmetic
+is confirmed with real masks: the clipped band touches all four quadrants, the
+cover needs MORE zone-tier crops than the grid has zones, and the 1/3-of-live
+bar was never reachable. The machine projection uses load 192 s (measured),
+global 80 s and per-zone 158 s (derived: total minus load, with the global
+clip assumed to cost what the 4x4 run's 1080p-tier clips did); the cathedral
+projection uses its measured 51.7 / 17.0 / 23.9 s.
+
+### Outcome
+
+**Decision rule, branch 4 on both plates: no variant passes; the zones change
+the output materially.** The design's branch 4 asks for a blind A/B of V1 vs V2
+in Nuke before concluding the zones are worth their runtime — **that human
+verdict is still PENDING**, and the harness has written the pack for it:
+`<dump>/ablation/ab/` holds `A.exr`, `B.exr` and their -3/0/+3 sweeps with the
+assignment randomised by the harness and hidden in `ab/key.json` (judge first,
+read the key after). Approach B is independently dead on the runtime model, so
+the A/B now decides only whether the zone tier is worth 14 min against the
+global pass alone — not which speedup to build.
+
+What this does NOT establish: the ablation measures DIFFERENCE, not
+correctness. V2 differing from V1 by a stop says the quarter-tier global pass
+and the zone-tier conversion disagree, not which is right. That is precisely
+what the blind A/B is for. V3 also remains an UPPER BOUND on approach B — its
+crop pixels come from the full run, and fresh smaller crops would see less
+scene context.
+
+**The thresholds were provisional and one of them was wrong.** `U p99 <= 0.05`
+and `T p99 <= 0.10` stood up — nothing came near them, so they were never the
+deciding edge. `seam worst <= 1.0x` did not: V1, the reference, scores 1.14x on
+the machine plate, so the bar sat below the thing it was measuring against.
+Recalibrated for any future re-score: compare against V1's own windowed worst on
+that plate, and keep the shipped 1.5x gate as the absolute flag.
+
+Reproduce: set `ATLAS_MATRIXZONE_DUMP_DIR`, run the HDR still workflow, then
+`python tools/matrixzone_zone_ablation.py <dump> --write-exr --ab V1,V2`. The
+harness takes 208 s on the 8K plate and 49 s on the 4K one (the design hoped
+for under 2 minutes; the 8K case is 3.5).
 
 ## Comp may need paint fixes
 
@@ -247,3 +441,10 @@ pixels instead of printing nan.
   the stripes drift down a 2256-row zone, and one band per zone row left 0.085 stops.
 - Default sequence mode — decided by gate 5's numbers (provisional: `per_zone_clip`).
 - Whether the anchor's split frequency is exposed or fixed.
+- **Blind A/B, V1 vs V2** (the zone ablation's branch 4). The packs are written
+  and unlabelled: `output/atlas_mz_dump_machine8k/ablation/ab/` and
+  `output/atlas_mz_dump_cathedral4k/ablation/ab/`. Look at `A.exr` and `B.exr`
+  in Nuke at -3/0/+3, write the verdict down, then read `ab/key.json`. If the
+  zone-tier plate is not judged better, the 4K-tier zones are not worth 14 min
+  and the global pass alone becomes the default; if it is, the speedup track
+  closes and the full run stands as built.
