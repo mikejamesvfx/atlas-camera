@@ -226,11 +226,28 @@ class AtlasMatrixZoneStitch:
             plate, rep = mz_stitch(zones, plan, global_hdr=None if glob is None else glob[..., :3],
                                    split_px=split_px or None)
             n_zones = len(zones)
+            # Debug dump (env var, off by default): the intermediates the zone
+            # ablation replays. Never fatal -- a 15 min run does not lose its
+            # EXR because a scratch directory was not writable.
+            dump, dump_lines = _dump_dir(), []
+            if dump:
+                try:
+                    wrote = _dump_zone_arrays(np, dump, global_img=glob,
+                                              global_clip=clips[0], zones=zones)
+                    dump_lines.append(f"dump: {len(wrote)} array(s) -> {dump}")
+                except Exception as exc:                        # noqa: BLE001
+                    dump_lines.append(f"dump FAILED (zones): {type(exc).__name__}: {exc}")
             del clips, glob, zones          # free the zone medians before the 8K post-passes
             destripe = bool(_first(destripe))
             detail_from_sdr = bool(_first(detail_from_sdr))
             sdr = _first(sdr_plate) if sdr_plate is not None else None
             sdr_lin, s_disp, sdr_note = _sdr_reference(np, sdr, plate.shape)
+            if dump:
+                try:
+                    wrote = _dump_plate_arrays(np, dump, s_disp=s_disp, handle=handle)
+                    dump_lines.append(f"dump: {', '.join(wrote)}")
+                except Exception as exc:                        # noqa: BLE001
+                    dump_lines.append(f"dump FAILED (plate): {type(exc).__name__}: {exc}")
             plate, stripe_rep, local_rep, xfer_rep = _clean_plate(
                 plate, plan, sdr_lin, s_disp, destripe=destripe, detail_from_sdr=detail_from_sdr)
             del s_disp                      # only sdr_lin is used past the clean-up passes
@@ -240,6 +257,15 @@ class AtlasMatrixZoneStitch:
             params = _provenance_params(handle, rep, anchor=anchor, destripe=destripe,
                                         detail_from_sdr=detail_from_sdr, sdr_wired=sdr is not None,
                                         local_rep=local_rep, xfer_rep=xfer_rep, stripe_rep=stripe_rep)
+            if dump:
+                try:
+                    _dump_params(dump, params,
+                                 {"anchor": anchor, "split_px": split_px, "destripe": destripe,
+                                  "detail_from_sdr": detail_from_sdr, "colorspace": colorspace,
+                                  "sdr_plate_wired": sdr is not None, "sdr_note": sdr_note})
+                    dump_lines.append("dump: params.json")
+                except Exception as exc:                        # noqa: BLE001
+                    dump_lines.append(f"dump FAILED (params): {type(exc).__name__}: {exc}")
             if out_note:
                 exr_path, exr_note = "", out_note
             else:
@@ -253,6 +279,8 @@ class AtlasMatrixZoneStitch:
                 exr_path=exr_path, exr_note=exr_note, delivered=delivered, diff_note=diff_note,
                 stripe_rep=stripe_rep, local_rep=local_rep, xfer_rep=xfer_rep,
                 destripe=destripe, detail_from_sdr=detail_from_sdr, sdr_note=sdr_note)
+            if dump_lines:
+                report += "\n" + "\n".join(dump_lines)
             preview = torch.from_numpy(_tonemap_preview(np, plate).astype(np.float32))[None]
             return {"ui": {"text": [report]}, "result": (preview, exr_path, report)}
         finally:
@@ -375,6 +403,80 @@ def _clean_plate(plate, plan, sdr_lin, s_disp, *, destripe, detail_from_sdr):
         from atlas_camera.core.matrixzone import sdr_detail_transfer
         plate, xfer_rep = sdr_detail_transfer(plate, s_disp)
     return plate, stripe_rep, local_rep, xfer_rep
+
+
+#: Set this to a directory and the stitch writes the intermediates the zone
+#: ablation replays offline (``docs/designs/matrixzone-hdr-zone-ablation.md``).
+#: Unset -- the normal case -- nothing is written and nothing changes. The
+#: env-var read and the file writing live HERE, not in ``core``: core stays
+#: numpy maths with no host I/O (review R2-6).
+DUMP_DIR_ENV = "ATLAS_MATRIXZONE_DUMP_DIR"
+
+
+def _dump_dir():
+    """The dump directory, or None. Created on first write, never by this call."""
+    import os
+    return os.environ.get(DUMP_DIR_ENV, "").strip().strip('"') or None
+
+
+def _dump_save(np, folder, name, array):
+    import os
+    os.makedirs(folder, exist_ok=True)
+    np.save(os.path.join(folder, name), np.ascontiguousarray(array, dtype=np.float32))
+    return name
+
+
+def _dump_zone_arrays(np, folder, *, global_img, global_clip, zones):
+    """``global.npy`` + one ``zone_NN.npy`` per zone: ``hdr_linear`` as the
+    stitch received it, after each clip is reduced to its one image."""
+    g = global_img if global_img is not None else np.median(global_clip, axis=0)
+    wrote = [_dump_save(np, folder, "global.npy", g[..., :3])]
+    for i, z in enumerate(zones):
+        wrote.append(_dump_save(np, folder, f"zone_{i:02d}.npy", z))
+    return wrote
+
+
+def _global_sdr_clip(np, s_disp, plan):
+    """The SDR the GLOBAL pass was given: AtlasMatrixZoneSplit's padded render
+    at ``plan['global']['size']``, rebuilt with the split's own torch ops so
+    the ablation's curve fit sees the same pair the model did."""
+    torch = _require_torch()
+    L, T, R, B = plan["render"]["overscan"]
+    chw = torch.from_numpy(np.ascontiguousarray(s_disp[None, ..., :3],
+                                                dtype=np.float32)).permute(0, 3, 1, 2)
+    if any((L, T, R, B)):
+        chw = torch.nn.functional.pad(chw, (L, R, T, B), mode="replicate")
+    gw, gh = plan["global"]["size"]
+    g = torch.nn.functional.interpolate(chw, size=(gh, gw), mode="area")
+    return g.permute(0, 2, 3, 1)[0].numpy()
+
+
+def _dump_plate_arrays(np, folder, *, s_disp, handle):
+    """``sdr.npy`` (the display plate), ``sdr_global.npy`` (its global-pass
+    crop) and ``plan.json`` (the ATLAS_MATRIXZONE handle, verbatim)."""
+    import json
+    import os
+    wrote = []
+    if s_disp is not None:
+        wrote.append(_dump_save(np, folder, "sdr.npy", s_disp[..., :3]))
+        wrote.append(_dump_save(np, folder, "sdr_global.npy",
+                                _global_sdr_clip(np, s_disp, handle["plan"])))
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "plan.json"), "w", encoding="utf-8") as fh:
+        json.dump(handle, fh, indent=2)
+    wrote.append("plan.json")
+    return wrote
+
+
+def _dump_params(folder, params, widgets):
+    """``params.json``: every stitch / destripe / transfer value the live run
+    used, so the offline replay is not guessing them (review R2-7)."""
+    import json
+    import os
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, "params.json"), "w", encoding="utf-8") as fh:
+        json.dump({"params": params, "widgets": widgets}, fh, indent=2)
+    return ["params.json"]
 
 
 def _provenance_params(handle, rep, *, anchor, destripe, detail_from_sdr, sdr_wired,

@@ -635,6 +635,10 @@ SDR_TRANSFER_RADIUS = 64
 SDR_TRANSFER_EPS = 0.01
 SDR_TRANSFER_CLIP = (0.85, 0.97)
 
+#: Box radius the SDR's max channel is averaged over before the clip window,
+#: so a single hot pixel does not punch a hole in the mask.
+SDR_TRANSFER_KEEP_RADIUS = 4
+
 
 def _box_mean(np, a, r: int):
     """Separable box mean of radius ``r`` (edge-padded), via cumulative sums."""
@@ -653,6 +657,34 @@ def _box_mean(np, a, r: int):
         a = d.astype(np.float32)
         del d
     return a
+
+
+def _keep_from_display(np, sd, clip, r: int):
+    """``keep`` from an already-clipped float32 display plate (no copy)."""
+    c = _box_mean(np, sd.max(-1), int(r))
+    lo, hi = float(clip[0]), float(clip[1])
+    keep = np.clip((c - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    del c
+    return keep * keep * (3 - 2 * keep)
+
+
+def sdr_transfer_keep_mask(sdr_display: Any, *,
+                           clip: tuple[float, float] = SDR_TRANSFER_CLIP,
+                           box_radius: int = SDR_TRANSFER_KEEP_RADIUS) -> Any:
+    """``sdr_detail_transfer``'s own feathered "the SDR has nothing to give" mask.
+
+    The box mean (radius ``box_radius``) of the SDR's max channel, mapped
+    through the clip window with smoothstep: 0 where the SDR still carries
+    structure, 1 where it clipped and the HDR's own pixels are kept. Factored
+    out of ``sdr_detail_transfer`` so an analysis that wants to know WHICH
+    pixels the conversion still decides shares one definition with the function
+    that decides them (the zone ablation's clipped core is ``> 0.5``).
+
+    ``sdr_display`` is the display-referred plate (0..1, sRGB).
+    """
+    np = _require_numpy()
+    sd = np.clip(np.asarray(sdr_display, dtype=np.float32)[..., :3], 0.0, 1.0)
+    return _keep_from_display(np, sd, clip, box_radius)
 
 
 def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFER_RADIUS,
@@ -699,12 +731,8 @@ def sdr_detail_transfer(hdr: Any, sdr_display: Any, *, radius: int = SDR_TRANSFE
     r = max(1, int(radius))
     mg = _box_mean(np, guide, r)
     vg = _box_mean(np, guide * guide, r) - mg * mg
-    c = _box_mean(np, sd.max(-1), 4)
+    keep = _keep_from_display(np, sd, clip, SDR_TRANSFER_KEEP_RADIUS)
     del sd
-    lo, hi = float(clip[0]), float(clip[1])
-    keep = np.clip((c - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
-    del c
-    keep = keep * keep * (3 - 2 * keep)
     out = np.empty_like(h)
     for ch in range(3):
         ratio = lh[..., ch] - ls[..., ch]
